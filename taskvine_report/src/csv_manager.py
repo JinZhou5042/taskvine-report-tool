@@ -275,18 +275,24 @@ class CSVManager:
             if not rows_file_created_size:
                 return pl.DataFrame({
                     'time': [],
-                    'delta_size_mb': [],
+                    'cumulative_size_mb': [],
                 })
             df = pl.DataFrame(rows_file_created_size, schema=['time', 'delta_size_mb'], orient="row")
             df = df.with_columns(pl.col('time').round(2))
             df = df.group_by('time').agg(pl.col('delta_size_mb').sum()).sort('time')
             df = df.with_columns(pl.col('delta_size_mb').cum_sum().clip(0).alias('cumulative_size_mb'))
-            downsampled_df = downsample_df_polars(
+            result = downsample_df_polars(
                 df.select(['time', 'cumulative_size_mb']),
                 y_col='cumulative_size_mb',
                 downsample_point_count=self.downsample_point_count
             )
-            return downsampled_df.select(['time', 'cumulative_size_mb'])
+            # Extend to run end: if no new files after last point, add trailing row so line reaches x_max
+            x_max = self.MAX_TIME - self.MIN_TIME
+            if result.height > 0 and float(result['time'][-1]) < float(x_max) - 1e-6:
+                last_cum = result['cumulative_size_mb'][-1]
+                trailing = pl.DataFrame({'time': [x_max], 'cumulative_size_mb': [last_cum]})
+                result = pl.concat([result, trailing], how='vertical_relaxed')
+            return result
         write_df_to_csv(_process_rows_file_created_size(rows_file_created_size), self.csv_file_file_created_size)
 
         def _process_rows_file_transferred_size(rows_file_transferred_size):
