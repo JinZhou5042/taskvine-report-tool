@@ -496,7 +496,7 @@ def extract_y_range_from_points(points, y_index=1):
             for p in points
             if isinstance(p, (list, tuple)) and len(p) > y_index and p[y_index] is not None
         ]
-        return [min(0.0, min(ys)), max(1.0, max(ys))] if ys else [0, 1]
+        return [min(0.0, min(ys)), max(ys)] if ys else [0, 1]
     except Exception:
         return [0, 1]
 
@@ -518,7 +518,7 @@ def extract_xy_domains_from_series_points(series_points_dict):
     if x_min == float('inf') or y_min == float('inf'):
         return [0, 1], [0, 1]
 
-    return [x_min, x_max], [min(0.0, y_min), max(1.0, y_max)]
+    return [x_min, x_max], [min(0.0, y_min), y_max]
 
 def extract_x_range_from_series_points(series_points_dict, x_index=0):
     if not series_points_dict or not isinstance(series_points_dict, dict):
@@ -559,7 +559,7 @@ def extract_y_range_from_series_points(series_points_dict, y_index=1):
                     y_max = max(y_max, y_val)
 
         if y_min != float('inf'):
-            return [min(0.0, y_min), max(1.0, y_max)]
+            return [min(0.0, y_min), y_max]
         else:
             return [0, 1]
     except Exception:
