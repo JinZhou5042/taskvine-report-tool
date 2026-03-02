@@ -3,17 +3,19 @@ import { BaseModule } from './base.js';
 export class WorkerLifetimeModule extends BaseModule {
     constructor(id, title, api_url) {
         super(id, title, api_url);
-        this.setBottomScaleType('linear');
+        this.setBottomScaleType('band');
         this.setLeftScaleType('linear');
     }
 
     plot() {
         if (!this.data) return;
 
+        const xWidth = this.bottomScale.bandwidth() * 0.8;
         const yFormatter = eval(this.data['y_tick_formatter']);
-        this.plotPoints(this.data['points'], {
-            tooltipFormatter: d => `Worker: ${this.data['idx_to_worker_key'][d[0]] ?? d[0]}<br>Lifetime: ${yFormatter(d[1])}`,
-            className: 'worker-lifetime-point',
+
+        this.data['points'].forEach(([worker_idx, lifetime]) => {
+            const innerHTML = `Worker: ${this.data['idx_to_worker_key'][worker_idx] ?? worker_idx}<br>Lifetime: ${yFormatter(lifetime)} s`;
+            this.plotVerticalRect(worker_idx, xWidth, lifetime, 'steelblue', 1, innerHTML);
         });
     }
 }

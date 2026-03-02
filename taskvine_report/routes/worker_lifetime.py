@@ -8,15 +8,15 @@ worker_lifetime_bp = Blueprint('worker_lifetime', __name__, url_prefix='/api')
 def get_worker_lifetime():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_lifetime)
-        points = [(float(p[0]), float(p[1])) for p in extract_points_from_df(df, 'ID', 'LifeTime (s)')]
-        x_domain = extract_x_range_from_points(points, x_index=0)
-        y_domain = extract_y_range_from_points(points, y_index=1)
+        points = extract_points_from_df(df, 'ID', 'LifeTime (s)')
+        x_domain = [p[0] for p in points]
+        y_domain = [0, max((p[1] for p in points), default=1)]
 
         return jsonify({
-            'points': downsample_points(points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
+            'points': points,
             'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_linear_tick_values(x_domain),
+            'x_tick_values': compute_discrete_tick_values(x_domain),
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter(),
