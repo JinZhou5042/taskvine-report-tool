@@ -473,17 +473,20 @@ def scale_storage_series_points(storage_data):
     return scaled_data, unit
 
 def extract_x_range_from_points(points, x_index=0):
+    """Return [min, max] for linear scale. Coerce to float; expand when min==max (D3 scaleLinear needs distinct bounds)."""
     if not points or not isinstance(points, list):
         return [0, 1]
-
     try:
         xs = [
-            p[x_index]
+            float(p[x_index])
             for p in points
             if isinstance(p, (list, tuple)) and len(p) > x_index and p[x_index] is not None
         ]
-        return [min(xs), max(xs)] if xs else [0, 1]
-    except Exception:
+        if not xs:
+            return [0, 1]
+        lo, hi = min(xs), max(xs)
+        return [lo, hi] if lo != hi else [lo - 0.5, hi + 0.5]
+    except (TypeError, ValueError):
         return [0, 1]
 
 def extract_y_range_from_points(points, y_index=1):

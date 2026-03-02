@@ -8,7 +8,7 @@ worker_lifetime_bp = Blueprint('worker_lifetime', __name__, url_prefix='/api')
 def get_worker_lifetime():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_lifetime)
-        points = extract_points_from_df(df, 'ID', 'LifeTime (s)')
+        points = [(float(p[0]), float(p[1])) for p in extract_points_from_df(df, 'ID', 'LifeTime (s)')]
         x_domain = extract_x_range_from_points(points, x_index=0)
         y_domain = extract_y_range_from_points(points, y_index=1)
 
