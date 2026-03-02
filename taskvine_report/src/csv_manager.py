@@ -299,18 +299,23 @@ class CSVManager:
             if not rows_file_transferred_size:
                 return pl.DataFrame({
                     'time': [],
-                    'delta_size_mb': [],
+                    'cumulative_size_mb': [],
                 })
             df = pl.DataFrame(rows_file_transferred_size, schema=['time', 'delta_size_mb'], orient="row")
             df = df.with_columns(pl.col('time').round(2))
             df = df.group_by('time').agg(pl.col('delta_size_mb').sum()).sort('time')
             df = df.with_columns(pl.col('delta_size_mb').cum_sum().clip(0).alias('cumulative_size_mb'))
-            downsampled_df = downsample_df_polars(
+            result = downsample_df_polars(
                 df.select(['time', 'cumulative_size_mb']),
                 y_col='cumulative_size_mb',
                 downsample_point_count=self.downsample_point_count
             )
-            return downsampled_df.select(['time', 'cumulative_size_mb'])
+            x_max = self.MAX_TIME - self.MIN_TIME
+            if result.height > 0 and float(result['time'][-1]) < float(x_max) - 1e-6:
+                last_cum = result['cumulative_size_mb'][-1]
+                trailing = pl.DataFrame({'time': [x_max], 'cumulative_size_mb': [last_cum]})
+                result = pl.concat([result, trailing], how='vertical_relaxed')
+            return result
         write_df_to_csv(_process_rows_file_transferred_size(rows_file_transferred_size), self.csv_file_file_transferred_size)
 
         def _process_rows_file_retention_time(rows_file_retention_time):
@@ -388,6 +393,12 @@ class CSVManager:
                     'time': [],
                     'cumulative': [],
                 })
+            x_max = self.MAX_TIME - self.MIN_TIME
+            if all_times and max(all_times) < float(x_max) - 1e-6:
+                for key in col_data:
+                    last_t = max(col_data[key].keys())
+                    col_data[key][float(x_max)] = col_data[key][last_t]
+                    all_times.add(float(x_max))
             sorted_times = sorted(all_times)
             out_df = pl.DataFrame({'time': sorted_times})
             for key in sorted(col_data):
@@ -681,12 +692,24 @@ class CSVManager:
 
             return df.fill_null(0)
 
+        x_max = floor_decimal(self.MAX_TIME - base_time, 2)
+
+        def _ensure_trailing_row(pdf):
+            if pdf is None or len(pdf) == 0:
+                return pdf
+            if float(pdf['time'].iloc[-1]) < float(x_max) - 1e-6:
+                last_row = pdf.iloc[-1].copy()
+                last_row['time'] = x_max
+                pdf = pd.concat([pdf, pd.DataFrame([last_row])], ignore_index=True)
+            return pdf
+
         # normal
         task_phases = _collect_phases(sorted_tasks)
         time_df = _build_concurrency_df(task_phases)
         if time_df is not None and time_df.height > 0:
             pdf = time_df.to_pandas()
             pdf = downsample_df(pdf, y_index=1, downsample_point_count=self.downsample_point_count)
+            pdf = _ensure_trailing_row(pdf)
             write_df_to_csv(pdf, self.csv_file_task_concurrency, index=False)
 
         # recovery only
@@ -696,6 +719,7 @@ class CSVManager:
         if time_df is not None and time_df.height > 0:
             pdf = time_df.to_pandas()
             pdf = downsample_df(pdf, y_index=1, downsample_point_count=self.downsample_point_count)
+            pdf = _ensure_trailing_row(pdf)
             write_df_to_csv(pdf, self.csv_file_task_concurrency_recovery_only, index=False)
  
     def generate_task_execution_details_metrics(self):
@@ -936,6 +960,13 @@ class CSVManager:
 
             if not column_data:
                 return
+
+            x_max = floor_decimal(self.MAX_TIME - base_time, 2)
+            if time_set and max(time_set) < float(x_max) - 1e-6:
+                for c in column_data:
+                    last_t = max(column_data[c].keys())
+                    column_data[c][float(x_max)] = column_data[c][last_t]
+                    time_set.add(float(x_max))
 
             sorted_times = sorted(time_set)
             rows = []

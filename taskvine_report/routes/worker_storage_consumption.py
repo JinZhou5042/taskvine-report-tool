@@ -57,11 +57,15 @@ def get_worker_storage_consumption():
             unit, scale = get_size_unit_and_scale(max_storage)
             if scale != 1:
                 accumulated_points = [[t, s * scale] for t, s in accumulated_points]
-            
+            accumulated_points = downsample_points(accumulated_points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"])
+            x_max = x_domain[1]
+            if accumulated_points and float(accumulated_points[-1][0]) < float(x_max) - 1e-6:
+                last_y = accumulated_points[-1][1]
+                accumulated_points = list(accumulated_points) + [(x_max, last_y)]
             y_domain = extract_y_range_from_points(accumulated_points)
             
             return jsonify({
-                'accumulated_data': downsample_points(accumulated_points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
+                'accumulated_data': accumulated_points,
                 'x_domain': x_domain,
                 'y_domain': y_domain,
                 'x_tick_values': compute_linear_tick_values(x_domain),
@@ -72,10 +76,16 @@ def get_worker_storage_consumption():
         else:
             storage_data = extract_series_points_dict(df, 'time')
             storage_data, size_unit = scale_storage_series_points(storage_data)
+            storage_data = downsample_series_points(storage_data)
+            x_max = x_domain[1]
+            for worker in storage_data:
+                pts = storage_data[worker]
+                if pts and float(pts[-1][0]) < float(x_max) - 1e-6:
+                    storage_data[worker] = list(pts) + [(x_max, pts[-1][1])]
             y_domain = extract_y_range_from_series_points(storage_data)
             
             return jsonify({
-                'storage_data': downsample_series_points(storage_data),
+                'storage_data': storage_data,
                 'x_domain': x_domain,
                 'y_domain': y_domain,
                 'x_tick_values': compute_linear_tick_values(x_domain),
