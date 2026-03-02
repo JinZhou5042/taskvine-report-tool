@@ -1,4 +1,4 @@
-import { moduleClasses, moduleConfigs } from './modules/configs.js';
+import { moduleClasses, enabledModuleConfigs } from './modules/configs.js';
 import { LogManager } from './modules/log_manager.js';
 import { updateSidebarButtons } from './modules/utils.js';
 
@@ -21,7 +21,7 @@ function addFootnote() {
 
 async function fetchAllModulesData(folder) {
     try {
-        const tasks = moduleConfigs.map(({ id }) => {
+        const tasks = enabledModuleConfigs.map(({ id }) => {
             const module = moduleObjects[id];
             return (async () => {
                 module.switchFolder(folder);
@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
     logManager.init();
 
     /* init modules */
-    moduleConfigs.forEach(({ id, title, api_url }) => {
+    enabledModuleConfigs.forEach(({ id, title, api_url }) => {
         const module = new moduleClasses[id](id, title, api_url);
         moduleObjects[id] = module;
         root.appendChild(module.renderSkeleton());

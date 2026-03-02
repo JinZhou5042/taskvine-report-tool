@@ -1,3 +1,31 @@
+/**
+ * Section visibility switch. Set to false to hide a section.
+ * Omitted entries default to true (visible).
+ */
+export const sectionVisibility = {
+    'task-execution-details': true,
+    'task-concurrency': true,
+    'task-response-time': true,
+    'task-execution-time': true,
+    'task-retrieval-time': true,
+    'task-completion-percentiles': false,
+    'task-dependencies': false,
+    'task-dependents': false,
+    'task-subgraphs': false,
+    'worker-storage-consumption': true,
+    'worker-concurrency': true,
+    'worker-incoming-transfers': true,
+    'worker-outgoing-transfers': true,
+    'worker-executing-tasks': true,
+    'worker-waiting-retrieval-tasks': true,
+    'worker-lifetime': true,
+    'file-sizes': true,
+    'file-concurrent-replicas': true,
+    'file-retention-time': true,
+    'file-transferred-size': true,
+    'file-created-size': true,
+};
+
 import { TaskExecutionDetailsModule } from './task_execution_details.js';
 import { TaskConcurrencyModule } from './task_concurrency.js';
 import { TaskResponseTimeModule } from './task_response_time.js';
@@ -67,3 +95,8 @@ export const moduleConfigs = [
     { id: 'file-transferred-size', title: 'File Transferred Size', api_url: '/api/file-transferred-size' },
     { id: 'file-created-size', title: 'File Created Size', api_url: '/api/file-created-size' },
 ];
+
+/** Module configs filtered by sectionVisibility (only enabled sections) */
+export const enabledModuleConfigs = moduleConfigs.filter(
+    (c) => sectionVisibility[c.id] !== false
+);
