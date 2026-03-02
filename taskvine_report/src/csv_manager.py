@@ -388,6 +388,26 @@ class CSVManager:
                 key = f"{wid[0]}:{wid[1]}:{wid[2]}"
                 col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
                 all_times.update(col_data[key].keys())
+
+            # Force 0 at connect/disconnect so lines start and end at 0 (no sudden jump)
+            for w_key, w in self.dp.workers.items():
+                key = f"{w_key[0]}:{w_key[1]}:{w_key[2]}"
+                if key not in col_data:
+                    continue
+                if len(w.time_connected) < 1 or len(w.time_disconnected) < 1:
+                    continue
+                t0 = floor_decimal(float(w.time_connected[0] - base_time), 2)
+                t1 = floor_decimal(float(w.time_disconnected[0] - base_time), 2)
+                if t0 >= 0:
+                    col_data[key][float(t0)] = 0.0
+                    all_times.add(float(t0))
+                else:
+                    col_data[key][0.0] = 0.0  # connect before base_time: use t=0
+                    all_times.add(0.0)
+                if t1 >= 0:
+                    col_data[key][float(t1)] = 0.0
+                    all_times.add(float(t1))
+
             if not col_data:
                 return pl.DataFrame({
                     'time': [],
@@ -431,20 +451,25 @@ class CSVManager:
                 col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
                 all_times.update(col_data[key].keys())
 
-            # Ensure zero storage at connection boundary times per worker: time_connected[0] and time_disconnected[0], applied last
+            # Force 0 at connect/disconnect so lines start and end at 0 (no sudden jump)
             if workers is not None:
                 for w_key, w in workers.items():
                     key = f"{w_key[0]}:{w_key[1]}:{w_key[2]}"
                     if key not in col_data:
                         col_data[key] = {}
-                    assert len(w.time_connected) == 1
-                    assert len(w.time_disconnected) == 1
+                    if len(w.time_connected) < 1 or len(w.time_disconnected) < 1:
+                        continue
                     t0 = floor_decimal(float(w.time_connected[0] - base_time), 2)
-                    col_data[key][float(t0)] = 0.0
-                    all_times.add(float(t0))
                     t1 = floor_decimal(float(w.time_disconnected[0] - base_time), 2)
-                    col_data[key][float(t1)] = 0.0
-                    all_times.add(float(t1))
+                    if t0 >= 0:
+                        col_data[key][float(t0)] = 0.0
+                        all_times.add(float(t0))
+                    else:
+                        col_data[key][0.0] = 0.0  # connect before base_time: use t=0
+                        all_times.add(0.0)
+                    if t1 >= 0:
+                        col_data[key][float(t1)] = 0.0
+                        all_times.add(float(t1))
 
             sorted_times = sorted(all_times)
             out_df = pl.DataFrame({'time': sorted_times})
@@ -929,17 +954,6 @@ class CSVManager:
             time_set = set()
 
             for worker_entry, events in events_dict.items():
-                w = self.dp.workers.get(worker_entry)
-                if w:
-                    t_connected = floor_decimal(w.time_connected[0] - base_time, 2)
-                    t_disconnected = floor_decimal(w.time_disconnected[0] - base_time, 2)
-                    boundary = []
-                    if t_connected > 0:
-                        boundary.append((t_connected, 0))
-                    if t_disconnected > 0:
-                        boundary.append((t_disconnected, 0))
-                    events += boundary
-
                 if not events:
                     continue
 
@@ -955,6 +969,20 @@ class CSVManager:
 
                 wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
                 col_map = {t: v for t, v in timeline}
+                # Force 0 at connect/disconnect so lines start and end at 0 (no sudden jump)
+                w = self.dp.workers.get(worker_entry)
+                if w and len(w.time_connected) >= 1 and len(w.time_disconnected) >= 1:
+                    t_connected = floor_decimal(w.time_connected[0] - base_time, 2)
+                    t_disconnected = floor_decimal(w.time_disconnected[0] - base_time, 2)
+                    if t_connected >= 0:
+                        col_map[float(t_connected)] = 0.0
+                        time_set.add(float(t_connected))
+                    else:
+                        col_map[0.0] = 0.0  # connect before base_time: use t=0
+                        time_set.add(0.0)
+                    if t_disconnected >= 0:
+                        col_map[float(t_disconnected)] = 0.0
+                        time_set.add(float(t_disconnected))
                 column_data[wid] = col_map
                 time_set.update(col_map.keys())
 
