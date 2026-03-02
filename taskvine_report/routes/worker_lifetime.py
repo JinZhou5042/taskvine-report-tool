@@ -9,14 +9,14 @@ def get_worker_lifetime():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_lifetime)
         points = extract_points_from_df(df, 'ID', 'LifeTime (s)')
-        x_domain = [p[0] for p in points]
-        y_domain = [0, max((p[1] for p in points), default=1)]
+        x_domain = extract_x_range_from_points(points)
+        y_domain = extract_y_range_from_points(points)
 
         return jsonify({
-            'points': points,
+            'points': downsample_points(points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
             'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_discrete_tick_values(x_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain),
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter(),
