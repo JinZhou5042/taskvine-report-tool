@@ -1430,17 +1430,16 @@ export class BaseModule {
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
         const [ymin, ymax] = this.leftDomain ?? [null, null];
 
-        return points.filter(p =>
-            Array.isArray(p) &&
-            p.length >= 2 &&
-            typeof p[0] === 'number' &&
-            typeof p[1] === 'number' &&
-            !Number.isNaN(p[0]) &&
-            !Number.isNaN(p[1]) &&
-            p[1] !== null &&
-            p[0] >= xmin && p[0] <= xmax &&
-            p[1] >= ymin && p[1] <= ymax
-        )
+        return points.filter(p => {
+            if (!Array.isArray(p) || p.length < 2 || p[1] == null) return false;
+            const x = Number(p[0]), y = Number(p[1]);
+            if (Number.isNaN(x) || Number.isNaN(y)) return false;
+            if (xmin != null && x < xmin) return false;
+            if (xmax != null && x > xmax) return false;
+            if (ymin != null && y < ymin) return false;
+            if (ymax != null && y > ymax) return false;
+            return true;
+        })
     }
 
     plotPoints(points, options = {}) {
@@ -1470,8 +1469,8 @@ export class BaseModule {
             .enter()
             .append('circle')
             .attr('class', className)
-            .attr('cx', d => this.bottomScale(d[0]))
-            .attr('cy', d => this.leftScale(d[1]))
+            .attr('cx', d => this.bottomScale(Number(d[0])))
+            .attr('cy', d => this.leftScale(Number(d[1])))
             .attr('r', radius)
             .attr('fill', color)
             .on('mouseover', (event, d) => {

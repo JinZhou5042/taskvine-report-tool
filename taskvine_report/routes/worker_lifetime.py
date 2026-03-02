@@ -18,12 +18,12 @@ def get_worker_lifetime():
             'points': downsample_points(points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
             'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_linear_tick_values(x_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain, round_digits=0),
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter(),
             'idx_to_worker_key': {
-                row['ID']: row['Worker IP Port'] for _, row in df.iterrows()
+                int(row['ID']): row['Worker IP Port'] for _, row in df.iterrows()
             },
         })
 
