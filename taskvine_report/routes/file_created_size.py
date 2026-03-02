@@ -49,6 +49,12 @@ def get_file_created_size():
             return jsonify(_empty_file_created_size_payload())
         
         x_domain = get_current_time_domain()
+        x_max = x_domain[1]
+        # Extend the line to the right edge: if no new files after last point,
+        # cumulative size stays flat; add a trailing point so the line reaches x_max
+        if points and points[-1][0] < x_max:
+            last_y = points[-1][1]
+            points = list(points) + [(x_max, last_y)]
         y_domain = extract_y_range_from_points(points)
 
         return jsonify({
