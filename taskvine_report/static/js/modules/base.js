@@ -949,7 +949,8 @@ export class BaseModule {
             id = '',
             curveType = d3.curveStepAfter,
             tooltipInnerHTML = null,
-            tooltipFormatter = null
+            tooltipFormatter = null,
+            disableHover = false
         } = options;
 
         const tooltip = document.getElementById('vine-tooltip');
@@ -964,7 +965,7 @@ export class BaseModule {
             })
             .curve(curveType);
 
-        this.svg.append('path')
+        const pathElement = this.svg.append('path')
             .datum(filteredPoints)
             .attr('fill', 'none')
             .attr('stroke', stroke)
@@ -973,39 +974,43 @@ export class BaseModule {
             .attr('original-stroke', stroke)
             .attr('original-stroke-width', strokeWidth)
             .attr('class', `${className} ${className}-${id}`)
-            .attr('id', id)
-            .on('mouseover', (event) => {
-                this.svg.selectAll(`path.${className}`)
-                    .filter(el => el !== event.currentTarget)
-                    .attr('stroke', '#ddd')
-                    .attr('stroke-width', strokeWidth);
-                d3.select(event.currentTarget)
-                    .attr('stroke', this.highlightColor)
-                    .attr('stroke-width', this.highlightStrokeWidth)
-                    .raise();
-                if (tooltipInnerHTML) {
-                    tooltip.innerHTML = tooltipInnerHTML;
-                    tooltip.style.visibility = 'visible';
-                    tooltip.style.top = (event.pageY + 10) + 'px';
-                    tooltip.style.left = (event.pageX + 10) + 'px';
-                } else if (tooltipFormatter) {
-                    tooltip.innerHTML = tooltipFormatter(event.currentTarget);
-                    tooltip.style.visibility = 'visible';
-                    tooltip.style.top = (event.pageY + 10) + 'px';
-                    tooltip.style.left = (event.pageX + 10) + 'px';
-                } else {
+            .attr('id', id);
+
+        if (!disableHover) {
+            pathElement
+                .on('mouseover', (event) => {
+                    this.svg.selectAll(`path.${className}`)
+                        .filter(el => el !== event.currentTarget)
+                        .attr('stroke', '#ddd')
+                        .attr('stroke-width', strokeWidth);
+                    d3.select(event.currentTarget)
+                        .attr('stroke', this.highlightColor)
+                        .attr('stroke-width', this.highlightStrokeWidth)
+                        .raise();
+                    if (tooltipInnerHTML) {
+                        tooltip.innerHTML = tooltipInnerHTML;
+                        tooltip.style.visibility = 'visible';
+                        tooltip.style.top = (event.pageY + 10) + 'px';
+                        tooltip.style.left = (event.pageX + 10) + 'px';
+                    } else if (tooltipFormatter) {
+                        tooltip.innerHTML = tooltipFormatter(event.currentTarget);
+                        tooltip.style.visibility = 'visible';
+                        tooltip.style.top = (event.pageY + 10) + 'px';
+                        tooltip.style.left = (event.pageX + 10) + 'px';
+                    } else {
+                        tooltip.style.visibility = 'hidden';
+                    }
+                })
+                .on('mouseout', () => {
+                    this.svg.selectAll(`path.${className}`)
+                        .each(function () {
+                            const sel = d3.select(this);
+                            sel.attr('stroke', sel.attr('original-stroke'))
+                               .attr('stroke-width', sel.attr('original-stroke-width'));
+                        });
                     tooltip.style.visibility = 'hidden';
-                }
-            })
-            .on('mouseout', () => {
-                this.svg.selectAll(`path.${className}`)
-                    .each(function () {
-                        const sel = d3.select(this);
-                        sel.attr('stroke', sel.attr('original-stroke'))
-                           .attr('stroke-width', sel.attr('original-stroke-width'));
-                    });
-                tooltip.style.visibility = 'hidden';
-            });
+                });
+        }
     }
 
     plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML, className = '') {

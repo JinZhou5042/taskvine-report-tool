@@ -18,6 +18,7 @@ export class TaskCompletionPercentilesModule extends BaseModule {
             className: 'task-completion-percentiles-path',
             id: `${this.id}-path`,
             curveType: d3.curveLinear,
+            disableHover: true,
         });
 
         this.plotPoints(this.data.points, {

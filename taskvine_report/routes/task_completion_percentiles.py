@@ -19,7 +19,7 @@ def get_task_completion_percentiles():
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
-            'y_tick_values': compute_linear_tick_values(y_domain),
+            'y_tick_values': [0, 25, 50, 75, 100],
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_percentage_formatter(digits=0)
         })
