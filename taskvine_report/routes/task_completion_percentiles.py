@@ -12,7 +12,7 @@ def get_task_completion_percentiles():
         points = [(completion_time, percentile) for percentile, completion_time in percentile_time_points]
         max_completion_time = max((point[0] for point in points), default=1.0)
         x_domain = [0.0, max(1.0, max_completion_time)]
-        y_domain = [1, 100]
+        y_domain = [0, 100]
 
         return jsonify({
             'points': downsample_points(points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
