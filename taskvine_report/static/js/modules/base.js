@@ -940,7 +940,7 @@ export class BaseModule {
         const [xmin, xmax] = this.bottomDomain ?? [0, Infinity];
         const [ymin, ymax] = this.leftDomain ?? [0, Infinity];
 
-        const filteredPoints = this._clipLineToXRange(points, xmin, xmax);
+        const filteredPoints = this._clipLineToRect(points, xmin, xmax, ymin, ymax);
 
         const {
             stroke = '#2077B4',
@@ -1388,38 +1388,42 @@ export class BaseModule {
     initLegend() {}
 
     /**
-     * Clip line points to x range [xmin, xmax], adding interpolated boundary points
-     * when segments cross xmin/xmax so the line extends to the visible edges.
+     * Clip line points to rect [xmin,xmax] x [ymin,ymax], adding interpolated boundary
+     * points when segments cross any edge so the line extends to the visible edges.
      */
-    _clipLineToXRange(points, xmin, xmax) {
-        if (!points || points.length < 2 || xmin == null || xmax == null) return points || [];
+    _clipLineToRect(points, xmin, xmax, ymin, ymax) {
+        if (!points || points.length < 2) return points || [];
+        if (xmin == null || xmax == null || ymin == null || ymax == null) return points;
         const result = [];
+        const inside = (x, y) => x >= xmin && x <= xmax && y >= ymin && y <= ymax;
+        const valid = (p) => Array.isArray(p) && p.length >= 2 && typeof p[0] === 'number' &&
+            typeof p[1] === 'number' && !Number.isNaN(p[0]) && !Number.isNaN(p[1]) && p[1] !== null;
         for (let i = 0; i < points.length; i++) {
             const p = points[i];
-            if (Array.isArray(p) && p.length >= 2 && typeof p[0] === 'number' && typeof p[1] === 'number' &&
-                !Number.isNaN(p[0]) && !Number.isNaN(p[1]) && p[1] !== null &&
-                p[0] >= xmin && p[0] <= xmax) {
-                result.push([p[0], p[1]]);
-            }
+            if (valid(p) && inside(p[0], p[1])) result.push([p[0], p[1]]);
         }
         for (let i = 0; i < points.length - 1; i++) {
             const [x1, y1] = points[i];
             const [x2, y2] = points[i + 1];
-            if (typeof x1 !== 'number' || typeof x2 !== 'number' || x1 === x2) continue;
-            if (y1 == null || y2 == null || Number.isNaN(y1) || Number.isNaN(y2)) continue;
-            const xLo = Math.min(x1, x2), xHi = Math.max(x1, x2);
-            if (xLo < xmin && xHi > xmin) {
-                const t = (xmin - x1) / (x2 - x1);
-                const y = y1 + t * (y2 - y1);
-                result.push([xmin, y]);
+            if (!valid(points[i]) || !valid(points[i + 1])) continue;
+            const dx = x2 - x1, dy = y2 - y1;
+            const addAtT = (t) => {
+                if (t > 1e-9 && t < 1 - 1e-9) {
+                    const x = x1 + t * dx, y = y1 + t * dy;
+                    if (x >= xmin && x <= xmax && y >= ymin && y <= ymax) result.push([x, y]);
+                }
+            };
+            if (Math.abs(dx) > 1e-12) {
+                addAtT((xmin - x1) / dx);
+                addAtT((xmax - x1) / dx);
             }
-            if (xLo < xmax && xHi > xmax) {
-                const t = (xmax - x1) / (x2 - x1);
-                const y = y1 + t * (y2 - y1);
-                result.push([xmax, y]);
+            if (Math.abs(dy) > 1e-12) {
+                addAtT((ymin - y1) / dy);
+                addAtT((ymax - y1) / dy);
             }
         }
-        return result.sort((a, b) => a[0] - b[0]);
+        const sorted = result.sort((a, b) => a[0] - b[0]);
+        return sorted.filter((p, i) => i === 0 || Math.abs(p[0] - sorted[i - 1][0]) > 1e-9 || Math.abs(p[1] - sorted[i - 1][1]) > 1e-9);
     }
 
     _filterPoints(points) {
