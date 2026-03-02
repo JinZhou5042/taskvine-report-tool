@@ -940,7 +940,7 @@ export class BaseModule {
         const [xmin, xmax] = this.bottomDomain ?? [0, Infinity];
         const [ymin, ymax] = this.leftDomain ?? [0, Infinity];
 
-        const filteredPoints = this._filterPoints(points);
+        const filteredPoints = this._clipLineToXRange(points, xmin, xmax);
 
         const {
             stroke = '#2077B4',
@@ -958,11 +958,7 @@ export class BaseModule {
         const line = d3.line()
             .x(d => this.bottomScale(d[0]))
             .y(d => this.leftScale(d[1]))
-            .defined(d => {
-                const x = d[0];
-                const y = d[1];
-                return x >= xmin && x <= xmax && y >= ymin && y <= ymax;
-            })
+            .defined(d => d != null && d[0] != null && d[1] != null && !Number.isNaN(d[0]) && !Number.isNaN(d[1]))
             .curve(curveType);
 
         const pathElement = this.svg.append('path')
@@ -1390,6 +1386,41 @@ export class BaseModule {
     }
 
     initLegend() {}
+
+    /**
+     * Clip line points to x range [xmin, xmax], adding interpolated boundary points
+     * when segments cross xmin/xmax so the line extends to the visible edges.
+     */
+    _clipLineToXRange(points, xmin, xmax) {
+        if (!points || points.length < 2 || xmin == null || xmax == null) return points || [];
+        const result = [];
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            if (Array.isArray(p) && p.length >= 2 && typeof p[0] === 'number' && typeof p[1] === 'number' &&
+                !Number.isNaN(p[0]) && !Number.isNaN(p[1]) && p[1] !== null &&
+                p[0] >= xmin && p[0] <= xmax) {
+                result.push([p[0], p[1]]);
+            }
+        }
+        for (let i = 0; i < points.length - 1; i++) {
+            const [x1, y1] = points[i];
+            const [x2, y2] = points[i + 1];
+            if (typeof x1 !== 'number' || typeof x2 !== 'number' || x1 === x2) continue;
+            if (y1 == null || y2 == null || Number.isNaN(y1) || Number.isNaN(y2)) continue;
+            const xLo = Math.min(x1, x2), xHi = Math.max(x1, x2);
+            if (xLo < xmin && xHi > xmin) {
+                const t = (xmin - x1) / (x2 - x1);
+                const y = y1 + t * (y2 - y1);
+                result.push([xmin, y]);
+            }
+            if (xLo < xmax && xHi > xmax) {
+                const t = (xmax - x1) / (x2 - x1);
+                const y = y1 + t * (y2 - y1);
+                result.push([xmax, y]);
+            }
+        }
+        return result.sort((a, b) => a[0] - b[0]);
+    }
 
     _filterPoints(points) {
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
