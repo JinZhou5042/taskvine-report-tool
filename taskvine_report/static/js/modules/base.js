@@ -1429,17 +1429,13 @@ export class BaseModule {
     _filterPoints(points) {
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
         const [ymin, ymax] = this.leftDomain ?? [null, null];
-
         return points.filter(p => {
             if (!Array.isArray(p) || p.length < 2 || p[1] == null) return false;
             const x = Number(p[0]), y = Number(p[1]);
-            if (Number.isNaN(x) || Number.isNaN(y)) return false;
-            if (xmin != null && x < xmin) return false;
-            if (xmax != null && x > xmax) return false;
-            if (ymin != null && y < ymin) return false;
-            if (ymax != null && y > ymax) return false;
-            return true;
-        })
+            return !Number.isNaN(x) && !Number.isNaN(y) &&
+                (xmin == null || x >= xmin) && (xmax == null || x <= xmax) &&
+                (ymin == null || y >= ymin) && (ymax == null || y <= ymax);
+        });
     }
 
     plotPoints(points, options = {}) {
