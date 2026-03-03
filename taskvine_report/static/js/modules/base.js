@@ -1541,12 +1541,16 @@ export class BaseModule {
         return Array.isArray(pts) ? pts : [];
     }
 
-    _transformToCdfPoints(points) {
+    _transformToCdfPoints(points, numPercentiles = 100) {
         const valid = points.filter(p => Array.isArray(p) && p.length >= 2 && p[1] != null && !Number.isNaN(Number(p[1])));
         if (valid.length === 0) return [];
         const sorted = [...valid].sort((a, b) => Number(a[1]) - Number(b[1]));
         const n = sorted.length;
-        return sorted.map((p, i) => [Number(p[1]), (i + 1) / n]);
+        return Array.from({ length: numPercentiles }, (_, i) => {
+            const p = (i + 1) / numPercentiles;
+            const idx = Math.min(Math.floor(p * n), n - 1);
+            return [Number(sorted[idx][1]), p];
+        });
     }
 
     _setAxesForCdf() {
@@ -1575,14 +1579,21 @@ export class BaseModule {
 
     _plotCdf() {
         const pts = this._getPointsForCdf();
-        const cdfPts = this._transformToCdfPoints(pts);
+        const cdfPts = this._transformToCdfPoints(pts, 100);
         if (cdfPts.length === 0) return;
+        const origYFormatter = this.data?.['y_tick_formatter'] ? eval(this.data['y_tick_formatter']) : (d => String(d));
         this.plotPath(cdfPts, {
             stroke: 'steelblue',
             strokeWidth: 1.5,
             className: 'cdf-path',
             curveType: d3.curveLinear,
             disableHover: true,
+        });
+        this.plotPoints(cdfPts, {
+            radius: 2,
+            color: 'steelblue',
+            className: 'cdf-point',
+            tooltipFormatter: d => `Value: ${origYFormatter(d[0])}<br>CDF: ${(d[1] * 100).toFixed(0)}%`,
         });
     }
 
