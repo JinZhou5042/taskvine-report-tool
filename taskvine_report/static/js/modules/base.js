@@ -1546,17 +1546,21 @@ export class BaseModule {
         if (valid.length === 0) return [];
         const sorted = [...valid].sort((a, b) => Number(a[1]) - Number(b[1]));
         const n = sorted.length;
-        return sorted.map((p, i) => [i, (i + 1) / n]);
+        return sorted.map((p, i) => [Number(p[1]), (i + 1) / n]);
     }
 
     _setAxesForCdf() {
         const pts = this._getPointsForCdf();
         const cdfPts = this._transformToCdfPoints(pts);
-        const n = cdfPts.length;
-        if (n === 0) return;
-        this.setBottomDomain([0, Math.max(n - 1, 1)]);
-        this.setBottomTickValues(this._computeLinearTicks([0, Math.max(n - 1, 1)], 5));
-        this.setBottomFormatter(d => String(Math.round(d)));
+        if (cdfPts.length === 0) return;
+        const xs = cdfPts.map(p => p[0]);
+        const xMin = Math.min(...xs);
+        const xMax = Math.max(...xs);
+        const xDomain = xMin === xMax ? [xMin - 0.5, xMax + 0.5] : [xMin, xMax];
+        this.setBottomDomain(xDomain);
+        this.setBottomTickValues(this._computeLinearTicks(xDomain, 5));
+        const origYFormatter = this.data?.['y_tick_formatter'] ? eval(this.data['y_tick_formatter']) : (d => String(d));
+        this.setBottomFormatter(origYFormatter);
         this.setLeftDomain([0, 1]);
         this.setLeftTickValues([0, 0.25, 0.5, 0.75, 1]);
         this.setLeftFormatter(d => (d * 100).toFixed(0) + '%');
@@ -1573,8 +1577,9 @@ export class BaseModule {
         const pts = this._getPointsForCdf();
         const cdfPts = this._transformToCdfPoints(pts);
         if (cdfPts.length === 0) return;
+        const origYFormatter = this.data?.['y_tick_formatter'] ? eval(this.data['y_tick_formatter']) : (d => String(d));
         this.plotPoints(cdfPts, {
-            tooltipFormatter: d => `Rank: ${d[0]}<br>CDF: ${(d[1] * 100).toFixed(1)}%`,
+            tooltipFormatter: d => `Value: ${origYFormatter(d[0])}<br>CDF: ${(d[1] * 100).toFixed(1)}%`,
             className: 'cdf-point',
         });
     }
