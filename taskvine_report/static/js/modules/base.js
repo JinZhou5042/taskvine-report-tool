@@ -92,11 +92,14 @@ export class BaseModule {
         this.toolboxSelectorItems = [];
         this.toolboxInputItems = [];
         this.toolboxButtonItems = [];
+
+        this._hasScatterPlot = false;
+        this._cdfMode = false;
     }
 
     switchFolder(folder) {
         this._folder = folder;
-
+        this._cdfMode = false;
         /* if the folder is switched, clear the plot */
         this.clearPlot();
     }
@@ -166,7 +169,7 @@ export class BaseModule {
             if (!isReadyToPlot) {
                 return;
             }
-            this.plot();
+            this._invokePlot();
         } catch (error) {
             console.error(`Error fetching data for module ${this.id}:`, error);
         } finally {
@@ -258,7 +261,7 @@ export class BaseModule {
         
         this.clearSVG();
         this._plotAxes();
-        this.plot();
+        this._invokePlot();
     }      
 
     createToolboxItemSetXMin() {
@@ -324,7 +327,7 @@ export class BaseModule {
         // Clear the SVG and replot axes before calling plot()
         this.clearSVG();
         this._plotAxes();
-        this.plot();
+        this._invokePlot();
     }    
 
     createToolboxItemSetYMin() {
@@ -421,6 +424,10 @@ export class BaseModule {
 
         // Allow subclasses to add their own items
         this._addCustomToolboxItems();
+
+        if (this._hasScatterPlot) {
+            this.toolboxButtonItems.push(this.createToolboxItemCdfToggle());
+        }
 
         // Combine all items, ensuring Reset and Refetch are in the correct positions
         const items = [
@@ -1369,7 +1376,7 @@ export class BaseModule {
         if (this._boundResize) {
             window.removeEventListener('resize', this._boundResize);
         }
-        this._boundResize = _.debounce(() => this.plot(), 300);
+        this._boundResize = _.debounce(() => this._invokePlot(), 300);
         window.addEventListener('resize', this._boundResize);
     }
 
@@ -1505,17 +1512,98 @@ export class BaseModule {
         /** 2. clear the custom params */
         this.clearCustomParams();
 
-        /** 3. plot the axes from the fetched data */
+        /** 3. exit CDF mode if active */
+        this._cdfMode = false;
+
+        /** 4. plot the axes from the fetched data */
         this._setAxesFromFetchedData();
         this._plotAxes();
 
-        /** 4. check all checkboxes */
+        /** 5. check all checkboxes */
         this._queryAllLegendCheckboxes().each(function () {
             this.checked = true;
         });
 
-        /** 5. plot the data */
-        this.plot();
+        /** 6. plot the data */
+        this._invokePlot();
+    }
+
+    _invokePlot() {
+        if (this._cdfMode && this._hasScatterPlot) {
+            this._plotCdf();
+        } else {
+            this.plot();
+        }
+    }
+
+    _getPointsForCdf() {
+        const pts = this.data?.['points'] ?? this.data?.points;
+        return Array.isArray(pts) ? pts : [];
+    }
+
+    _transformToCdfPoints(points) {
+        const valid = points.filter(p => Array.isArray(p) && p.length >= 2 && p[1] != null && !Number.isNaN(Number(p[1])));
+        if (valid.length === 0) return [];
+        const sorted = [...valid].sort((a, b) => Number(a[1]) - Number(b[1]));
+        const n = sorted.length;
+        return sorted.map((p, i) => [i, (i + 1) / n]);
+    }
+
+    _setAxesForCdf() {
+        const pts = this._getPointsForCdf();
+        const cdfPts = this._transformToCdfPoints(pts);
+        const n = cdfPts.length;
+        if (n === 0) return;
+        this.setBottomDomain([0, Math.max(n - 1, 1)]);
+        this.setBottomTickValues(this._computeLinearTicks([0, Math.max(n - 1, 1)], 5));
+        this.setBottomFormatter(() => (d) => String(Math.round(d)));
+        this.setLeftDomain([0, 1]);
+        this.setLeftTickValues([0, 0.25, 0.5, 0.75, 1]);
+        this.setLeftFormatter(d => (d * 100).toFixed(0) + '%');
+    }
+
+    _computeLinearTicks(domain, numTicks = 5) {
+        const [lo, hi] = domain;
+        if (lo === hi) return [lo];
+        const step = (hi - lo) / (numTicks - 1);
+        return Array.from({ length: numTicks }, (_, i) => lo + i * step);
+    }
+
+    _plotCdf() {
+        const pts = this._getPointsForCdf();
+        const cdfPts = this._transformToCdfPoints(pts);
+        if (cdfPts.length === 0) return;
+        this.plotPoints(cdfPts, {
+            tooltipFormatter: d => `Rank: ${d[0]}<br>CDF: ${(d[1] * 100).toFixed(1)}%`,
+            className: 'cdf-point',
+        });
+    }
+
+    _redrawForCdfToggle() {
+        this.clearSVG();
+        if (this._cdfMode) {
+            const pts = this._getPointsForCdf();
+            if (pts.length === 0) {
+                this._cdfMode = false;
+            }
+        }
+        if (this._cdfMode) {
+            this._setAxesForCdf();
+        } else {
+            this._setAxesFromFetchedData();
+        }
+        this._plotAxes();
+        this._setupZoomAndScroll();
+        this._invokePlot();
+        this._initToolbox();
+    }
+
+    createToolboxItemCdfToggle() {
+        const label = this._cdfMode ? 'Undisplay CDF' : 'Display CDF';
+        return this.toolbox.createButtonItem(`${this.id}-cdf-toggle`, label, () => {
+            this._cdfMode = !this._cdfMode;
+            this._redrawForCdfToggle();
+        });
     }
 
     clearCustomParams() {

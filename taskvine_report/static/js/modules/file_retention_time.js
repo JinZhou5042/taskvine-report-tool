@@ -3,6 +3,7 @@ import { BaseModule } from './base.js';
 export class FileRetentionTimeModule extends BaseModule {
     constructor(id, title, api_url) {
         super(id, title, api_url);
+        this._hasScatterPlot = true;
         this.setBottomScaleType('linear');
         this.setLeftScaleType('linear');
     }
