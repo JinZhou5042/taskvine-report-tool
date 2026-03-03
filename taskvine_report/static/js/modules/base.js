@@ -1556,7 +1556,7 @@ export class BaseModule {
         if (n === 0) return;
         this.setBottomDomain([0, Math.max(n - 1, 1)]);
         this.setBottomTickValues(this._computeLinearTicks([0, Math.max(n - 1, 1)], 5));
-        this.setBottomFormatter(() => (d) => String(Math.round(d)));
+        this.setBottomFormatter(d => String(Math.round(d)));
         this.setLeftDomain([0, 1]);
         this.setLeftTickValues([0, 0.25, 0.5, 0.75, 1]);
         this.setLeftFormatter(d => (d * 100).toFixed(0) + '%');
