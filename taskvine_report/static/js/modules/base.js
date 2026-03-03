@@ -24,6 +24,21 @@ async function ensurePdfDependencies() {
 }
 
 
+const _hoverInstances = new Set();
+let _hoverSafetyNetBound = false;
+
+function _setupHoverSafetyNet() {
+    if (_hoverSafetyNetBound) return;
+    _hoverSafetyNetBound = true;
+    document.addEventListener('mousemove', (event) => {
+        const tooltip = document.getElementById('vine-tooltip');
+        if (!tooltip || tooltip.style.visibility !== 'visible') return;
+        const el = document.elementFromPoint(event.clientX, event.clientY);
+        if (el?.closest('.plotting-container') || el?.id === 'vine-tooltip') return;
+        _hoverInstances.forEach(inst => inst._resetHoverState?.());
+    });
+}
+
 export class BaseModule {
     constructor(id, title, api_url) {
         this.id = id;
@@ -159,6 +174,29 @@ export class BaseModule {
             return;
         }
         this.toolbox = new Toolbox({ id: `${this.id}-toolbox` });
+        _hoverInstances.add(this);
+        _setupHoverSafetyNet();
+    }
+
+    _resetHoverState() {
+        const tooltip = document.getElementById('vine-tooltip');
+        if (tooltip) tooltip.style.visibility = 'hidden';
+        if (!this.svgNode) return;
+        const svg = this.svgNode.closest('svg');
+        if (!svg) return;
+        svg.querySelectorAll('path[data-original-stroke]').forEach(p => {
+            p.setAttribute('stroke', p.getAttribute('data-original-stroke') ?? '');
+            p.setAttribute('stroke-width', p.getAttribute('data-original-stroke-width') ?? '');
+        });
+        svg.querySelectorAll('rect[data-original-fill]').forEach(r => {
+            r.setAttribute('fill', r.getAttribute('data-original-fill') ?? '');
+            r.setAttribute('opacity', r.getAttribute('data-original-opacity') ?? '1');
+        });
+        svg.querySelectorAll('circle[data-original-fill]').forEach(c => {
+            c.setAttribute('fill', c.getAttribute('data-original-fill') ?? '');
+            const r = c.getAttribute('data-original-r');
+            if (r != null) c.setAttribute('r', r);
+        });
     }
 
     async fetchDataAndPlot() {
@@ -974,8 +1012,8 @@ export class BaseModule {
             .attr('stroke', stroke)
             .attr('stroke-width', strokeWidth)
             .attr('d', line)
-            .attr('original-stroke', stroke)
-            .attr('original-stroke-width', strokeWidth)
+            .attr('data-original-stroke', stroke)
+            .attr('data-original-stroke-width', strokeWidth)
             .attr('class', `${className} ${className}-${id}`)
             .attr('id', id);
 
@@ -1008,8 +1046,8 @@ export class BaseModule {
                     this.svg.selectAll(`path.${className}`)
                         .each(function () {
                             const sel = d3.select(this);
-                            sel.attr('stroke', sel.attr('original-stroke'))
-                               .attr('stroke-width', sel.attr('original-stroke-width'));
+                            sel.attr('stroke', sel.attr('data-original-stroke'))
+                               .attr('stroke-width', sel.attr('data-original-stroke-width'));
                         });
                     tooltip.style.visibility = 'hidden';
                 });
@@ -1047,6 +1085,8 @@ export class BaseModule {
             .attr('height', height)
             .attr('fill', fill)
             .attr('opacity', opacity)
+            .attr('data-original-fill', fill)
+            .attr('data-original-opacity', opacity)
             .attr('class', className)
             .on('mouseover', (event) => {
                 d3.select(event.currentTarget)
@@ -1094,6 +1134,8 @@ export class BaseModule {
             .attr('height', height)
             .attr('fill', fill)
             .attr('opacity', opacity)
+            .attr('data-original-fill', fill)
+            .attr('data-original-opacity', opacity)
             .attr('class', className)
             .on('mouseover', (event) => {
                 d3.select(event.currentTarget)
@@ -1476,6 +1518,8 @@ export class BaseModule {
             .attr('cy', d => this.leftScale(Number(d[1])))
             .attr('r', radius)
             .attr('fill', color)
+            .attr('data-original-fill', color)
+            .attr('data-original-r', radius)
             .on('mouseover', (event, d) => {
                 d3.select(event.currentTarget)
                     .attr('fill', this.highlightColor)
