@@ -1577,10 +1577,12 @@ export class BaseModule {
         const pts = this._getPointsForCdf();
         const cdfPts = this._transformToCdfPoints(pts);
         if (cdfPts.length === 0) return;
-        const origYFormatter = this.data?.['y_tick_formatter'] ? eval(this.data['y_tick_formatter']) : (d => String(d));
-        this.plotPoints(cdfPts, {
-            tooltipFormatter: d => `Value: ${origYFormatter(d[0])}<br>CDF: ${(d[1] * 100).toFixed(1)}%`,
-            className: 'cdf-point',
+        this.plotPath(cdfPts, {
+            stroke: 'steelblue',
+            strokeWidth: 1.5,
+            className: 'cdf-path',
+            curveType: d3.curveLinear,
+            disableHover: true,
         });
     }
 
