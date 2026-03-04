@@ -26,10 +26,11 @@ pip install -e .
 
 ## Usage Guide
 
-The tool provides two main commands:
+The tool provides three main commands:
 
 - 🔍 `vine_parse` - Parse TaskVine logs and generate analysis data
 - 🌐 `vine_report` - Start web visualization server
+- 📤 `vine_export` - Export report to static PNG and PDF
 
 ### Command Reference
 
