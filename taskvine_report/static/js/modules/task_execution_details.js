@@ -61,11 +61,9 @@ export class TaskExecutionDetailsModule extends BaseModule {
     }
 
     _plotTask(task, primaryName, recoveryName, timeStart, timeEnd) {
-        /* Use null/undefined check: 0 is valid (relative time at experiment start) */
-        if (timeStart == null || timeEnd == null || timeStart === undefined || timeEnd === undefined) return;
+        if (!timeStart || !timeEnd) return;
         timeStart = +timeStart;
         timeEnd = +timeEnd;
-        if (isNaN(timeStart) || isNaN(timeEnd)) return;
 
         const isRecovery = task.is_recovery_task;
         const recoveryChecked = isRecovery && this._isTaskTypeChecked(recoveryName);

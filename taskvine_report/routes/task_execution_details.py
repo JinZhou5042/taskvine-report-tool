@@ -70,15 +70,17 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
     
     counts = defaultdict(int)
 
-    # Use metadata for accurate counts based on original data
-    # Successful task phases - each successful task contributes to all 3 phases
-    successful_count = metadata.get('successful_tasks', 0)
-    counts['successful-committing-to-worker'] = successful_count
-    counts['successful-executing-on-worker'] = successful_count
-    counts['successful-retrieving-to-manager'] = successful_count
+    # Successful task phases: use actual successful_tasks from CSV so legend items
+    # (Committing/Executing/Retrieving) only appear when we have bars to display.
+    # Metadata may count more (e.g. tasks without when_retrieved filtered from CSV).
+    for task in successful_tasks:
+        counts['successful-committing-to-worker'] += 1
+        counts['successful-executing-on-worker'] += 1
+        counts['successful-retrieving-to-manager'] += 1
+        if task.get('is_recovery_task'):
+            counts['recovery-successful'] += 1
     
-    # Recovery tasks
-    counts['recovery-successful'] = metadata.get('recovery_successful', 0)
+    # Recovery tasks (unsuccessful) and other counts from metadata
     counts['recovery-unsuccessful'] = metadata.get('recovery_unsuccessful', 0)
     
     # Unsuccessful tasks by status
@@ -111,8 +113,8 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
             'color': color,
         })
 
-    # Set group totals using metadata
-    group_map['Successful Tasks']['total'] = metadata.get('successful_tasks', 0)
+    # Set group totals: Successful Tasks from actual data to match displayed bars
+    group_map['Successful Tasks']['total'] = len(successful_tasks)
     group_map['Unsuccessful Tasks']['total'] = metadata.get('unsuccessful_tasks', 0)
     group_map['Recovery Tasks']['total'] = metadata.get('recovery_tasks', 0)
     group_map['Workers']['total'] = metadata.get('total_workers', 0)
