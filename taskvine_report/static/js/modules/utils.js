@@ -9,6 +9,7 @@ export function getTaskInnerHTML(task) {
         Try ID: ${task.try_id}<br>
         Worker: ${task.worker_entry}<br>
         Core ID: ${task.core_id}<br>
+        Cores Requested: ${task.cores_requested != null ? task.cores_requested : 'N/A'}<br>
         Inputs: ${task.input_files || 'N/A'}<br>
         Outputs: ${task.output_files || 'N/A'}<br>
         When Ready: ${format(task.when_ready)}<br>

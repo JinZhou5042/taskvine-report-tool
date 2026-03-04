@@ -165,6 +165,7 @@ def get_task_execution_details():
                 'worker_entry': str(row['worker_entry']),
                 'worker_id': int(row['worker_id']),
                 'core_id': int(row['core_id']),
+                'cores_requested': int(row['cores_requested']) if pd.notna(row.get('cores_requested')) else None,
                 'is_recovery_task': bool(row['is_recovery_task']),
                 'input_files': str(row['input_files']) if pd.notna(row['input_files']) else '',
                 'output_files': str(row['output_files']) if pd.notna(row['output_files']) else '',

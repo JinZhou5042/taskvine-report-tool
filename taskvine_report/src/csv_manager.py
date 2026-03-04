@@ -768,6 +768,7 @@ class CSVManager:
                 'worker_entry': f"{task.worker_entry[0]}:{task.worker_entry[1]}:{task.worker_entry[2]}",
                 'worker_id': worker_id,
                 'core_id': core_id,
+                'cores_requested': getattr(task, 'cores_requested', None),
                 'is_recovery_task': task.is_recovery_task,
                 'input_files': file_list_formatter(task.input_files) if task.input_files else '',
                 'output_files': file_list_formatter(task.output_files) if task.output_files else '',
@@ -782,21 +783,15 @@ class CSVManager:
             if task.task_status == 0:  # Successful task
                 if getattr(task, 'is_library_task', False):
                     continue
-                if task.when_running is None:
-                    continue
-                # time_worker_start/end from "complete" line; fallback to when_running/when_waiting_retrieval if missing
-                t_start = task.time_worker_start if task.time_worker_start is not None else task.when_running
-                t_end = task.time_worker_end if task.time_worker_end is not None else (
-                    task.when_waiting_retrieval if task.when_waiting_retrieval is not None else task.when_retrieved
-                )
-                if t_start is None or t_end is None:
+                # Require when_running and time_worker_start/end from "complete" line for accurate bars
+                if (task.when_running is None or task.time_worker_start is None or task.time_worker_end is None):
                     continue
 
                 # Add successful task specific fields (when_retrieved optional for retrieving bar)
                 task_data.update({
-                    'time_worker_start': round(t_start - base_time, 2),
-                    'time_worker_end': round(t_end - base_time, 2),
-                    'execution_time': round(t_end - t_start, 2),
+                    'time_worker_start': round(task.time_worker_start - base_time, 2),
+                    'time_worker_end': round(task.time_worker_end - base_time, 2),
+                    'execution_time': round(task.time_worker_end - task.time_worker_start, 2),
                     'when_waiting_retrieval': round(task.when_waiting_retrieval - base_time, 2) if task.when_waiting_retrieval else None,
                     'when_retrieved': round(task.when_retrieved - base_time, 2) if task.when_retrieved else None,
                     'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
@@ -861,6 +856,7 @@ class CSVManager:
                 'num_output_files': pd.NA,
                 'task_status': pd.NA,
                 'category': pd.NA,
+                'cores_requested': pd.NA,
                 'when_ready': pd.NA,
                 'when_running': pd.NA,
                 'time_worker_start': pd.NA,
@@ -890,7 +886,7 @@ class CSVManager:
             # Define column order
             columns = [
                 'record_type', 'task_id', 'task_try_id', 'worker_entry', 'worker_id', 'core_id',
-                'is_recovery_task', 'input_files', 'output_files', 'num_input_files', 'num_output_files',
+                'cores_requested', 'is_recovery_task', 'input_files', 'output_files', 'num_input_files', 'num_output_files',
                 'task_status', 'category', 'when_ready', 'when_running', 'time_worker_start',
                 'time_worker_end', 'execution_time', 'when_waiting_retrieval', 'when_retrieved',
                 'when_failure_happens', 'when_done', 'unsuccessful_checkbox_name', 'hash',

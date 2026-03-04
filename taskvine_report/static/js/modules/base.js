@@ -1078,7 +1078,7 @@ export class BaseModule {
         const y = this.leftScale(y_start);
         const height = y_height;
 
-        if (y === undefined || Number.isNaN(y) || width <= 0) return;
+        if (y === undefined || Number.isNaN(y) || width <= 0 || height <= 0) return;
     
         this.svg.append('rect')
             .attr('x', x)

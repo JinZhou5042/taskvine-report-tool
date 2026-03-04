@@ -81,8 +81,8 @@ export class TaskExecutionDetailsModule extends BaseModule {
         const fill = this._getLegendColor(taskType) || '#999';
         const innerHTML = getTaskInnerHTML(task);
         
-        /* Ensure min 1px height when many bands make bandwidth sub-pixel (e.g. 5520 bands) */
-        const height = Math.max(1, this.getScaleBandWidth(this.leftScale));
+        /* Use actual band width so bars align correctly and do not overlap */
+        const height = this.getScaleBandWidth(this.leftScale);
         const className = `task-type-${taskType}`;
 
         this.plotHorizontalRect(timeStart, timeEnd - timeStart, `${task.worker_id}-${task.core_id}`, height, fill, 1, innerHTML, className);
@@ -97,11 +97,14 @@ export class TaskExecutionDetailsModule extends BaseModule {
             const opacity = 0.3;
             const innerHTML = getWorkerInnerHTML(worker);
 
-            const height = Math.max(0, this.getScaleBandWidth(this.leftScale) * worker.cores + 
-                (this.leftScale.step() - this.getScaleBandWidth(this.leftScale)) * (worker.cores - 1));
+            const bandwidth = this.getScaleBandWidth(this.leftScale);
+            const step = this.leftScale.step();
+            const height = Math.max(0, bandwidth * worker.cores + (step - bandwidth) * (worker.cores - 1));
+            /* Worker bar spans from first core (top) downward */
+            const yBand = `${worker.id}-1`;
             
             const className = 'task-type-workers';
-            this.plotHorizontalRect(timeStart, timeEnd - timeStart, `${worker.id}-${worker.cores}`, height, fill, opacity, innerHTML, className);
+            this.plotHorizontalRect(timeStart, timeEnd - timeStart, yBand, height, fill, opacity, innerHTML, className);
         }
     }    
 
@@ -122,7 +125,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
         this.data['successful_tasks'].forEach(task => {
             this._plotTask(task, 'successful-committing-to-worker', 'recovery-successful', task.when_running, task.time_worker_start);
             this._plotTask(task, 'successful-executing-on-worker', 'recovery-successful', task.time_worker_start, task.time_worker_end);
-            this._plotTask(task, 'successful-retrieving-to-manager', 'recovery-successful', task.time_worker_end, task.when_retrieved);
+            this._plotTask(task, 'successful-retrieving-to-manager', 'recovery-successful', task.time_worker_end, task.when_waiting_retrieval);
         });
     }
 }
