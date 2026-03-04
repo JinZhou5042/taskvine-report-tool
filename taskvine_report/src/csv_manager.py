@@ -958,7 +958,7 @@ class CSVManager:
                     continue
 
                 df = pd.DataFrame(events, columns=['time', 'delta'])
-                df = df.groupby('time', as_index=False)['delta'].sum()
+                df = df.sort_values(['time', 'delta'])
                 df['cumulative'] = df['delta'].cumsum().clip(lower=0)
                 
                 if df['cumulative'].isna().all():
