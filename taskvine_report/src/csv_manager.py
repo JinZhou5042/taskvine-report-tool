@@ -780,10 +780,13 @@ class CSVManager:
             }
 
             if task.task_status == 0:  # Successful task
-                if not task.when_retrieved or getattr(task, 'is_library_task', False):
+                if getattr(task, 'is_library_task', False):
+                    continue
+                # Need when_running, time_worker_start, time_worker_end for committing/executing bars
+                if not task.when_running or not task.time_worker_start or not task.time_worker_end:
                     continue
 
-                # Add successful task specific fields
+                # Add successful task specific fields (when_retrieved optional for retrieving bar)
                 task_data.update({
                     'time_worker_start': round(task.time_worker_start - base_time, 2) if task.time_worker_start else None,
                     'time_worker_end': round(task.time_worker_end - base_time, 2) if task.time_worker_end else None,

@@ -70,17 +70,18 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
     
     counts = defaultdict(int)
 
-    # Successful task phases: use actual successful_tasks from CSV so legend items
-    # (Committing/Executing/Retrieving) only appear when we have bars to display.
-    # Metadata may count more (e.g. tasks without when_retrieved filtered from CSV).
-    for task in successful_tasks:
-        counts['successful-committing-to-worker'] += 1
-        counts['successful-executing-on-worker'] += 1
-        counts['successful-retrieving-to-manager'] += 1
-        if task.get('is_recovery_task'):
-            counts['recovery-successful'] += 1
+    # Successful task phases: use max(metadata, actual) so legend shows when we have
+    # either metadata count or actual bars; ensures checkboxes exist for plotting
+    successful_count = max(
+        metadata.get('successful_tasks', 0),
+        len(successful_tasks)
+    )
+    counts['successful-committing-to-worker'] = successful_count
+    counts['successful-executing-on-worker'] = successful_count
+    counts['successful-retrieving-to-manager'] = successful_count
     
-    # Recovery tasks (unsuccessful) and other counts from metadata
+    # Recovery tasks
+    counts['recovery-successful'] = metadata.get('recovery_successful', 0)
     counts['recovery-unsuccessful'] = metadata.get('recovery_unsuccessful', 0)
     
     # Unsuccessful tasks by status
@@ -113,8 +114,8 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
             'color': color,
         })
 
-    # Set group totals: Successful Tasks from actual data to match displayed bars
-    group_map['Successful Tasks']['total'] = len(successful_tasks)
+    # Set group totals using metadata
+    group_map['Successful Tasks']['total'] = metadata.get('successful_tasks', 0)
     group_map['Unsuccessful Tasks']['total'] = metadata.get('unsuccessful_tasks', 0)
     group_map['Recovery Tasks']['total'] = metadata.get('recovery_tasks', 0)
     group_map['Workers']['total'] = metadata.get('total_workers', 0)
@@ -232,6 +233,15 @@ def get_task_execution_details():
 
         # Calculate y_domain and y_tick_values
         y_domain = [f"{w['id']}-{i}" for w in workers for i in range(1, w['cores'] + 1)]
+        y_domain_set = set(y_domain)
+
+        # Filter tasks to only those with valid (worker_id, core_id) in y_domain
+        def task_in_domain(t):
+            key = f"{t['worker_id']}-{t['core_id']}"
+            return key in y_domain_set
+        successful_tasks = [t for t in successful_tasks if task_in_domain(t)]
+        unsuccessful_tasks = [t for t in unsuccessful_tasks if task_in_domain(t)]
+
         if len(y_domain) <= 5:
             y_tick_values = y_domain
         else:
