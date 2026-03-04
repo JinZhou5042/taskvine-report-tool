@@ -77,7 +77,8 @@ export class TaskExecutionDetailsModule extends BaseModule {
         const fill = this._getLegendColor(taskType);
         const innerHTML = getTaskInnerHTML(task);
         
-        const height = this.getScaleBandWidth(this.leftScale);
+        /* Ensure min 1px height when many bands make bandwidth sub-pixel (e.g. 5520 bands) */
+        const height = Math.max(1, this.getScaleBandWidth(this.leftScale));
         const className = `task-type-${taskType}`;
 
         this.plotHorizontalRect(timeStart, timeEnd - timeStart, `${task.worker_id}-${task.core_id}`, height, fill, 1, innerHTML, className);
@@ -103,23 +104,21 @@ export class TaskExecutionDetailsModule extends BaseModule {
     async plot() {
         if (!this.data) return;
 
-        /* plot workers */
+        /* plot workers first (background) */
         if (this._isTaskTypeChecked('workers') && this.data['workers']) {
             this.data['workers'].forEach(worker => {
                 this._plotWorker(worker);
             });
         }
 
-        /* plot successful tasks */
+        /* plot tasks on top (foreground): unsuccessful first, then successful so colored bars are visible */
+        this.data['unsuccessful_tasks'].forEach(task => {
+            this._plotTask(task, task.unsuccessful_checkbox_name, 'recovery-unsuccessful', task.when_running, task.when_failure_happens);
+        });
         this.data['successful_tasks'].forEach(task => {
             this._plotTask(task, 'successful-committing-to-worker', 'recovery-successful', task.when_running, task.time_worker_start);
             this._plotTask(task, 'successful-executing-on-worker', 'recovery-successful', task.time_worker_start, task.time_worker_end);
             this._plotTask(task, 'successful-retrieving-to-manager', 'recovery-successful', task.time_worker_end, task.when_retrieved);
-        });
-
-        /* plot unsuccessful tasks */
-        this.data['unsuccessful_tasks'].forEach(task => {
-            this._plotTask(task, task.unsuccessful_checkbox_name, 'recovery-unsuccessful', task.when_running, task.when_failure_happens);
         });
     }
 }
