@@ -930,7 +930,8 @@ class CSVManager:
         for task in self.dp.tasks.values():
             if not task.worker_entry:
                 continue
-            
+            if getattr(task, 'cores_requested', None) == 0:
+                continue
             worker_entry = task.worker_entry
             
             if task.time_worker_start and task.time_worker_end:

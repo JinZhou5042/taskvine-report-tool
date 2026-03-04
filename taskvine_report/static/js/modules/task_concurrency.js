@@ -39,8 +39,8 @@ export class TaskConcurrencyModule extends BaseModule {
     }
 
     _addCustomToolboxItems() {
-        this.addToolboxButtonItem(this._toolboxItemRecoveryTaskOnly());
-        this.addToolboxButtonItem(this._toolboxItemAllTasks());
+        // this.addToolboxButtonItem(this._toolboxItemRecoveryTaskOnly());  // temporarily disabled
+        // this.addToolboxButtonItem(this._toolboxItemAllTasks());
     }
 
     legendOnToggle(id, visible) {
