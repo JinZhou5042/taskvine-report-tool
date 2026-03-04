@@ -26,6 +26,9 @@ TASK_STATUS_TO_CHECKBOX_NAME = {
     13 << 3: 'unsuccessful-sandbox-exhaustion',
     14 << 3: 'unsuccessful-missing-library',
     15 << 3: 'unsuccessful-worker-disconnected',
+    # Tasks never dispatched or dispatch failed (no worker_entry/core_id, filtered from chart)
+    42 << 3: 'unsuccessful-undispatched',
+    43 << 3: 'unsuccessful-failed-to-dispatch',
 }
 
 LEGEND_SCHEMA = {
@@ -56,6 +59,9 @@ LEGEND_SCHEMA = {
     'unsuccessful-sandbox-exhaustion': ('Unsuccessful Tasks', 'Sandbox Exhaustion', '#E9967A'),
     'unsuccessful-missing-library': ('Unsuccessful Tasks', 'Missing Library', '#F08080'),
     'unsuccessful-worker-disconnected': ('Unsuccessful Tasks', 'Worker Disconnected', '#FF0000'),
+    # Tasks without worker (never dispatched or dispatch failed)
+    'unsuccessful-undispatched': ('Unsuccessful Tasks', 'Undispatched', '#9370DB'),
+    'unsuccessful-failed-to-dispatch': ('Unsuccessful Tasks', 'Failed to Dispatch', '#8A2BE2'),
 }
 
 def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
@@ -76,12 +82,19 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
     counts['recovery-unsuccessful'] = metadata.get('recovery_unsuccessful', 0)
     
     # Unsuccessful tasks by status
+    # Note: metadata keys may be strings after JSON load, convert to int for lookup
     task_status_counts = metadata.get('task_status_counts', {})
+    unknown_count = 0
     for status, count in task_status_counts.items():
-        if status != 0:  # Not successful
-            key = TASK_STATUS_TO_CHECKBOX_NAME.get(status)
+        status_int = int(status) if isinstance(status, str) else status
+        if status_int != 0:  # Not successful
+            key = TASK_STATUS_TO_CHECKBOX_NAME.get(status_int)
             if key:
                 counts[key] = count
+            else:
+                unknown_count += count
+    if unknown_count > 0:
+        counts['unsuccessful-unknown'] = counts.get('unsuccessful-unknown', 0) + unknown_count
     
     # Workers
     counts['workers'] = metadata.get('total_workers', 0)

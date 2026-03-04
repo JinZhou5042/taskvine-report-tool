@@ -483,7 +483,8 @@ class DataParser:
                 core_id = worker.run_task(task)
                 if core_id == -1:
                     print(f"Warning: worker {task.worker_entry} has no enough cores to run task {task_id}")
-                    print(f"current running tasks: {worker.tasks_running}")
+                    print(f"line: {self.debug_current_line}")
+                    print(f"current running tasks: {worker.tasks_running}\n")
                 # check if this is the first try
                 if task_id not in self.current_try_id:
                     self.current_try_id[task_id] = 1
@@ -556,6 +557,9 @@ class DataParser:
                 print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
             else:
                 task.set_task_status(timestamp, 12 << 3)
+            if task.worker_entry:
+                worker = self.workers[task.worker_entry]
+                worker.reap_task(task)
         else:
             raise ValueError(f"unrecognized state change: {line}")
         

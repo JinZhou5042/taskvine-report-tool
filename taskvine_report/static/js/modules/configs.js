@@ -16,7 +16,7 @@ export const sectionVisibility = {
     'worker-storage-consumption': true,
     'worker-incoming-transfers': true,
     'worker-outgoing-transfers': true,
-    'worker-executing-tasks': false,
+    'worker-executing-tasks': true,
     'worker-waiting-retrieval-tasks': false,
     'worker-lifetime': true,
     'file-sizes': true,

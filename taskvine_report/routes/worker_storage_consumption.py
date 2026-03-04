@@ -58,10 +58,6 @@ def get_worker_storage_consumption():
             if scale != 1:
                 accumulated_points = [[t, s * scale] for t, s in accumulated_points]
             accumulated_points = downsample_points(accumulated_points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"])
-            x_max = x_domain[1]
-            if accumulated_points and float(accumulated_points[-1][0]) < float(x_max) - 1e-6:
-                last_y = accumulated_points[-1][1]
-                accumulated_points = list(accumulated_points) + [(x_max, last_y)]
             y_domain = extract_y_range_from_points(accumulated_points)
             
             return jsonify({
@@ -77,11 +73,7 @@ def get_worker_storage_consumption():
             storage_data = extract_series_points_dict(df, 'time')
             storage_data, size_unit = scale_storage_series_points(storage_data)
             storage_data = downsample_series_points(storage_data)
-            x_max = x_domain[1]
-            for worker in storage_data:
-                pts = storage_data[worker]
-                if pts and float(pts[-1][0]) < float(x_max) - 1e-6:
-                    storage_data[worker] = list(pts) + [(x_max, pts[-1][1])]
+            # Do not extend lines to x_max; each worker's line ends at their disconnect time
             y_domain = extract_y_range_from_series_points(storage_data)
             
             return jsonify({
