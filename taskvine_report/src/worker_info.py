@@ -71,13 +71,18 @@ class WorkerInfo:
 
     def run_task(self, task):
         assert self.coremap is not None
+        # Library function tasks (cores_requested=0) do not occupy worker cores
+        cores = task.cores_requested if task.cores_requested is not None else 1
+        if cores == 0:
+            self.tasks_running.add(task.task_id)
+            return 0
         cores_found = 0
         for i in range(1, len(self.coremap)):
             if self.coremap[i] == 0:
                 self.coremap[i] = 1
                 task.core_id.append(i)
                 cores_found += 1
-                if cores_found == task.cores_requested:
+                if cores_found == cores:
                     self.tasks_running.add(task.task_id)
                     return i
         return -1

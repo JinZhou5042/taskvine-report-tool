@@ -62,7 +62,7 @@ class TaskInfo:
         self.worker_id = None
         self.core_id = []       # a task can be assigned to multiple cores
         self.committed_worker_hash = None
-        self.cores_requested = 1
+        self.cores_requested = None  # set by set_cores_requested; 0 = library function (no worker cores)
         self.gpus_requested = None
         self.memory_requested_mb = None
         self.disk_requested_mb = None
@@ -161,9 +161,9 @@ class TaskInfo:
         self.function_slots = function_slots
 
     def set_cores_requested(self, cores_requested):
-        if cores_requested == 0:
-            cores_requested = 1
-        if self.cores_requested and cores_requested != self.cores_requested:
+        # Keep 0 as-is: library function tasks (needs_library) use cores 0.000
+        # and do not occupy worker cores (they run inside the library process)
+        if self.cores_requested is not None and cores_requested != self.cores_requested:
             raise ValueError(
                 f"cores_requested mismatch for task {self.task_id}")
         self.cores_requested = cores_requested

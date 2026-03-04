@@ -201,6 +201,10 @@ class DataParser:
             lambda l, p, ctx: "added dependency" in l,
             lambda l, p, ctx: None),
 
+            H("send_task_to_worker",
+            lambda l, p, ctx: "tx to" in l and ("task" in p or ctx.sending_task),
+            lambda l, p, ctx: ctx._handle_debug_line_send_task_to_worker()),
+
         ]
         self.debug_handler_profiling = defaultdict(lambda: {"hits": 0})
 
