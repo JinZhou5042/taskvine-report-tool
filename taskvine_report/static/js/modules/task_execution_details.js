@@ -103,19 +103,6 @@ export class TaskExecutionDetailsModule extends BaseModule {
     async plot() {
         if (!this.data) return;
 
-        const nSuccess = this.data['successful_tasks']?.length ?? 0;
-        const nFail = this.data['unsuccessful_tasks']?.length ?? 0;
-        const nWorkers = this.data['workers']?.length ?? 0;
-        const yDomainLen = this.data['y_domain']?.length ?? 0;
-        const committingChecked = this._isTaskTypeChecked('successful-committing-to-worker');
-        const executingChecked = this._isTaskTypeChecked('successful-executing-on-worker');
-        const retrievingChecked = this._isTaskTypeChecked('successful-retrieving-to-manager');
-        console.log('[TaskExecutionDetails] plot:', {
-            nSuccess, nFail, nWorkers, yDomainLen,
-            committingChecked, executingChecked, retrievingChecked,
-            bottomDomain: this.bottomDomain, leftDomain: this.leftDomain?.length
-        });
-
         /* plot workers */
         if (this._isTaskTypeChecked('workers') && this.data['workers']) {
             this.data['workers'].forEach(worker => {

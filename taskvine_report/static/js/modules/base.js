@@ -1078,12 +1078,7 @@ export class BaseModule {
         const y = this.leftScale(y_start);
         const height = y_height;
 
-        if (y === undefined || Number.isNaN(y) || width <= 0) {
-            if (this.id === 'task-execution-details') {
-                console.warn('[TaskExecutionDetails] plotHorizontalRect skip:', { y_start, y, width, x_start, x_width });
-            }
-            return;
-        }
+        if (y === undefined || Number.isNaN(y) || width <= 0) return;
     
         this.svg.append('rect')
             .attr('x', x)

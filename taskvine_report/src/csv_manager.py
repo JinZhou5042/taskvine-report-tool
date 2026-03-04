@@ -782,8 +782,8 @@ class CSVManager:
             if task.task_status == 0:  # Successful task
                 if getattr(task, 'is_library_task', False):
                     continue
-                # Need when_running, time_worker_start, time_worker_end for committing/executing bars
-                if not task.when_running or not task.time_worker_start or not task.time_worker_end:
+                # Need when_running, time_worker_start, time_worker_end for committing/executing bars (0 is valid)
+                if (task.when_running is None or task.time_worker_start is None or task.time_worker_end is None):
                     continue
 
                 # Add successful task specific fields (when_retrieved optional for retrieving bar)

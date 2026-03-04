@@ -135,12 +135,12 @@ class TaskInfo:
         self.exit_status = exit_status
 
     def set_time_worker_start(self, time_worker_start):
-        if time_worker_start == 0:
+        if time_worker_start is None:
             return
         self.time_worker_start = float(time_worker_start)
 
     def set_time_worker_end(self, time_worker_end):
-        if time_worker_end == 0:
+        if time_worker_end is None:
             return
         self.time_worker_end = float(time_worker_end)
 
