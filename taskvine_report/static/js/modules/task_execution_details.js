@@ -100,8 +100,9 @@ export class TaskExecutionDetailsModule extends BaseModule {
             const bandwidth = this.getScaleBandWidth(this.leftScale);
             const step = this.leftScale.step();
             const height = Math.max(0, bandwidth * worker.cores + (step - bandwidth) * (worker.cores - 1));
-            /* Worker bar spans from first core (top) downward */
-            const yBand = `${worker.id}-1`;
+            /* Worker bar: y_domain is sorted (worker_id, core_id), range [svgHeight,0] puts 1-1 at bottom.
+               So worker 1's top band is 1-cores; bar starts there and extends down to cover all cores. */
+            const yBand = `${worker.id}-${worker.cores}`;
             
             const className = 'task-type-workers';
             this.plotHorizontalRect(timeStart, timeEnd - timeStart, yBand, height, fill, opacity, innerHTML, className);

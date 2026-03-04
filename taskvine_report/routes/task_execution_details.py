@@ -1,6 +1,17 @@
 from taskvine_report.utils import *
 
 import pandas as pd
+
+
+def _safe_int(row, key):
+    """Safely get int from row; handles missing column, NaN, and float."""
+    val = row.get(key, None) if hasattr(row, 'get') else None
+    if val is None or (hasattr(val, '__float__') and pd.isna(val)):
+        return None
+    try:
+        return int(float(val))
+    except (TypeError, ValueError):
+        return None
 from collections import defaultdict
 from flask import Blueprint, jsonify, current_app
 
@@ -165,7 +176,7 @@ def get_task_execution_details():
                 'worker_entry': str(row['worker_entry']),
                 'worker_id': int(row['worker_id']),
                 'core_id': int(row['core_id']),
-                'cores_requested': int(row['cores_requested']) if pd.notna(row.get('cores_requested')) else None,
+                'cores_requested': _safe_int(row, 'cores_requested'),
                 'is_recovery_task': bool(row['is_recovery_task']),
                 'input_files': str(row['input_files']) if pd.notna(row['input_files']) else '',
                 'output_files': str(row['output_files']) if pd.notna(row['output_files']) else '',
