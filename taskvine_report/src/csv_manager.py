@@ -934,14 +934,14 @@ class CSVManager:
             worker_entry = task.worker_entry
             
             if task.time_worker_start and task.time_worker_end:
-                start = floor_decimal(task.time_worker_start - base_time, 2)
-                end = floor_decimal(task.time_worker_end - base_time, 2)
+                start = floor_decimal(task.time_worker_start - base_time, 3)
+                end = floor_decimal(task.time_worker_end - base_time, 3)
                 if start < end:
                     executing_task_events[worker_entry].extend([(start, 1), (end, -1)])
             
             if task.when_waiting_retrieval and task.when_retrieved:
-                start = floor_decimal(task.when_waiting_retrieval - base_time, 2)
-                end = floor_decimal(task.when_retrieved - base_time, 2)
+                start = floor_decimal(task.when_waiting_retrieval - base_time, 3)
+                end = floor_decimal(task.when_retrieved - base_time, 3)
                 if start < end:
                     waiting_retrieval_events[worker_entry].extend([(start, 1), (end, -1)])
 
@@ -959,6 +959,7 @@ class CSVManager:
 
                 df = pd.DataFrame(events, columns=['time', 'delta'])
                 df = df.groupby('time', as_index=False)['delta'].sum()
+                df = df.sort_values('time')
                 df['cumulative'] = df['delta'].cumsum().clip(lower=0)
                 
                 if df['cumulative'].isna().all():
@@ -1004,7 +1005,9 @@ class CSVManager:
                     row[c] = column_data[c].get(t, float('nan'))
                 rows.append(row)
 
-            write_df_to_csv(pl.DataFrame(rows), csv_file, index=False)
+            out_df = pd.DataFrame(rows)
+            out_df = out_df.groupby('time', as_index=False).max()
+            write_df_to_csv(out_df, csv_file, index=False)
 
         # Write CSV files
         
