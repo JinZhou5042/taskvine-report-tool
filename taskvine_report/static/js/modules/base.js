@@ -1602,11 +1602,16 @@ export class BaseModule {
         const cdfPts = this._transformToCdfPoints(pts);
         if (cdfPts.length === 0) return;
         const xs = cdfPts.map(p => p[0]);
+        const uniqueXs = [...new Set(xs)].sort((a, b) => a - b);
         const xMin = Math.min(...xs);
         const xMax = Math.max(...xs);
         const xDomain = xMin === xMax ? [xMin - 0.5, xMax + 0.5] : [xMin, xMax];
         this.setBottomDomain(xDomain);
-        this.setBottomTickValues(this._computeLinearTicks(xDomain, 5));
+        const numTicks = 5;
+        const tickValues = uniqueXs.length <= numTicks
+            ? uniqueXs
+            : this._computeLinearTicks(xDomain, numTicks);
+        this.setBottomTickValues(tickValues);
         const origYFormatter = this.data?.['y_tick_formatter'] ? eval(this.data['y_tick_formatter']) : (d => String(d));
         this.setBottomFormatter(origYFormatter);
         this.setLeftDomain([0, 1]);
