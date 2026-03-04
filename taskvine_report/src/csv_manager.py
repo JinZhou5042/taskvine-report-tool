@@ -782,15 +782,21 @@ class CSVManager:
             if task.task_status == 0:  # Successful task
                 if getattr(task, 'is_library_task', False):
                     continue
-                # Need when_running, time_worker_start, time_worker_end for committing/executing bars (0 is valid)
-                if (task.when_running is None or task.time_worker_start is None or task.time_worker_end is None):
+                if task.when_running is None:
+                    continue
+                # time_worker_start/end from "complete" line; fallback to when_running/when_waiting_retrieval if missing
+                t_start = task.time_worker_start if task.time_worker_start is not None else task.when_running
+                t_end = task.time_worker_end if task.time_worker_end is not None else (
+                    task.when_waiting_retrieval if task.when_waiting_retrieval is not None else task.when_retrieved
+                )
+                if t_start is None or t_end is None:
                     continue
 
                 # Add successful task specific fields (when_retrieved optional for retrieving bar)
                 task_data.update({
-                    'time_worker_start': round(task.time_worker_start - base_time, 2) if task.time_worker_start else None,
-                    'time_worker_end': round(task.time_worker_end - base_time, 2) if task.time_worker_end else None,
-                    'execution_time': round(task.time_worker_end - task.time_worker_start, 2) if task.time_worker_end and task.time_worker_start else None,
+                    'time_worker_start': round(t_start - base_time, 2),
+                    'time_worker_end': round(t_end - base_time, 2),
+                    'execution_time': round(t_end - t_start, 2),
                     'when_waiting_retrieval': round(task.when_waiting_retrieval - base_time, 2) if task.when_waiting_retrieval else None,
                     'when_retrieved': round(task.when_retrieved - base_time, 2) if task.when_retrieved else None,
                     'when_done': round(task.when_done - base_time, 2) if task.when_done else None,

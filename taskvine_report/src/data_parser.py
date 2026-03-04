@@ -757,8 +757,11 @@ class DataParser:
             if "end" in parts or "failed to send" in line:
                 self.sending_task = None
             elif "cores" in parts:
-                self.sending_task.set_cores_requested(
-                    int(float(parts[parts.index("cores") + 1])))
+                cores_val = int(float(parts[parts.index("cores") + 1]))
+                # needs_library tasks report cores 0 but should use 1 for coremap/display
+                if cores_val == 0 and getattr(self.sending_task, 'needs_library', False):
+                    cores_val = 1
+                self.sending_task.set_cores_requested(cores_val)
             elif "gpus" in parts:
                 self.sending_task.set_gpus_requested(
                     int(float(parts[parts.index("gpus") + 1])))
@@ -768,6 +771,8 @@ class DataParser:
             elif "disk" in parts:
                 self.sending_task.set_disk_requested_mb(
                     int(float(parts[parts.index("disk") + 1])))
+            elif "needs_library" in parts:
+                self.sending_task.needs_library = True
             elif "category" in parts:
                 self.sending_task.set_category(
                     parts[parts.index("category") + 1])

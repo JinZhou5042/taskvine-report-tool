@@ -69,6 +69,7 @@ class TaskInfo:
         self.execution_time = None
 
         self.is_library_task = False
+        self.needs_library = False  # function task that runs in a library's slot
         self.function_slots = None
 
     def set_worker_entry(self, worker_entry):
