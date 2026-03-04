@@ -231,16 +231,14 @@ def get_task_execution_details():
                 'gpus': int(row['gpus']) if pd.notna(row['gpus']) else 0
             })
 
-        # Calculate y_domain and y_tick_values
-        y_domain = [f"{w['id']}-{i}" for w in workers for i in range(1, w['cores'] + 1)]
-        y_domain_set = set(y_domain)
-
-        # Filter tasks to only those with valid (worker_id, core_id) in y_domain
-        def task_in_domain(t):
-            key = f"{t['worker_id']}-{t['core_id']}"
-            return key in y_domain_set
-        successful_tasks = [t for t in successful_tasks if task_in_domain(t)]
-        unsuccessful_tasks = [t for t in unsuccessful_tasks if task_in_domain(t)]
+        # Build y_domain from workers AND tasks (tasks may reference workers not in list, e.g. no hash)
+        band_set = set()
+        for w in workers:
+            for i in range(1, max(1, w['cores']) + 1):
+                band_set.add(f"{w['id']}-{i}")
+        for t in successful_tasks + unsuccessful_tasks:
+            band_set.add(f"{t['worker_id']}-{t['core_id']}")
+        y_domain = sorted(band_set, key=lambda k: (int(k.split('-')[0]), int(k.split('-')[1])))
 
         if len(y_domain) <= 5:
             y_tick_values = y_domain
