@@ -1869,10 +1869,11 @@ export class BaseModule {
                 const legendItem = groupDiv.append('div')
                     .attr('class', 'legend-item' + (item.checked ? ' checked' : ''));
 
+                const uniqueId = `${this.id}-${item.id}`;
                 legendItem.append('input')
                     .attr('type', 'checkbox')
                     .attr('name', this.legendCheckboxName)
-                    .attr('id', item.id)
+                    .attr('id', uniqueId)
                     .property('checked', item.checked !== false)   /* default checked unless this field is specified as false */
                     .style('accent-color', item.color || '#666')
                     .on('click', function(e) { e.stopPropagation(); })
@@ -1884,7 +1885,7 @@ export class BaseModule {
 
                 if (item.showLabel) {
                     legendItem.append('label')
-                        .attr('for', item.id)
+                        .attr('for', uniqueId)
                         .attr('class', 'legend-label')
                         .text(item.label)
                         .on('click', function(e) { e.stopPropagation(); });

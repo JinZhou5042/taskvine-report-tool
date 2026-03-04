@@ -56,8 +56,12 @@ export class TaskExecutionDetailsModule extends BaseModule {
     }
 
     _isTaskTypeChecked(taskType) {
-        const checkbox = document.getElementById(taskType);
-        return checkbox && checkbox.checked;
+        if (this.checkboxStates && taskType in this.checkboxStates) {
+            return this.checkboxStates[taskType];
+        }
+        const checkbox = document.getElementById(`${this.id}-${taskType}`);
+        if (checkbox) return checkbox.checked;
+        return true;
     }
 
     _plotTask(task, primaryName, recoveryName, timeStart, timeEnd) {
@@ -74,7 +78,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
 
     
         const taskType = recoveryChecked ? recoveryName : primaryName;
-        const fill = this._getLegendColor(taskType);
+        const fill = this._getLegendColor(taskType) || '#999';
         const innerHTML = getTaskInnerHTML(task);
         
         /* Ensure min 1px height when many bands make bandwidth sub-pixel (e.g. 5520 bands) */
