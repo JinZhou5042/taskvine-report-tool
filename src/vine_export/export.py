@@ -14,8 +14,19 @@ import traceback as tb
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from src.utils import check_pip_updates, ensure_dir
+from src.utils import check_pip_updates, ensure_dir, create_progress_bar
+from src.vine_export.config import (
+    CANVAS_HEIGHT_INCHES,
+    CANVAS_WIDTH_INCHES,
+    DPI_DEFAULT,
+    MAX_TASKS_PER_TYPE,
+)
 from src import __version__
+
+
+class ExportHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter):
+    """Keep defaults + preserve line breaks in help text."""
+    pass
 
 
 def remove_duplicates_preserve_order(seq):
@@ -72,27 +83,22 @@ def get_export_dirs(runtime_template):
 
 # --- Plot section IDs (aligned with vine_report modules) ---
 EXPORT_SECTIONS = [
-    "task-execution-details",
     "task-concurrency",
     "task-response-time",
     "task-execution-time",
     "task-retrieval-time",
-    "task-completion-percentiles",
-    "task-dependencies",
-    "task-dependents",
-    "task-subgraphs",
     "worker-concurrency",
     "worker-storage-consumption",
     "worker-incoming-transfers",
     "worker-outgoing-transfers",
     "worker-executing-tasks",
-    "worker-waiting-retrieval-tasks",
     "worker-lifetime",
     "file-sizes",
     "file-concurrent-replicas",
     "file-retention-time",
     "file-transferred-size",
     "file-created-size",
+    "task-execution-details",
 ]
 
 
@@ -100,13 +106,60 @@ def generate_plot_png(section_id, csv_files_dir, png_files_dir, **kwargs):
     """
     Generate a single plot PNG for the given section.
 
-    TODO: Implement in src.vine_export.export_plots or similar.
     Reads CSV from csv_files_dir, produces PNG in png_files_dir.
     """
-    # Placeholder - actual implementation will use matplotlib/plotly/etc.
-    png_path = os.path.join(png_files_dir, f"{section_id}.png")
-    # Stub: create empty file or skip for now
-    return png_path
+    from src.vine_export.plot_sections import (
+        plot_task_concurrency,
+        plot_task_response_time,
+        plot_task_execution_time,
+        plot_task_retrieval_time,
+        plot_worker_concurrency,
+        plot_worker_storage_consumption,
+        plot_worker_incoming_transfers,
+        plot_worker_outgoing_transfers,
+        plot_worker_executing_tasks,
+        plot_worker_lifetime,
+        plot_file_sizes,
+        plot_file_concurrent_replicas,
+        plot_file_retention_time,
+        plot_file_transferred_size,
+        plot_file_created_size,
+    )
+    from src.vine_export.plot_task_execution_details import plot_task_execution_details
+
+    dpi = kwargs.get("dpi", DPI_DEFAULT)
+    max_tasks = kwargs.get("max_tasks", MAX_TASKS_PER_TYPE)
+    width = kwargs.get("width")
+    height = kwargs.get("height")
+
+    plotters = {
+        "task-concurrency": lambda: plot_task_concurrency(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "task-response-time": lambda: plot_task_response_time(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "task-execution-time": lambda: plot_task_execution_time(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "task-retrieval-time": lambda: plot_task_retrieval_time(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "worker-concurrency": lambda: plot_worker_concurrency(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "worker-storage-consumption": lambda: plot_worker_storage_consumption(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "worker-incoming-transfers": lambda: plot_worker_incoming_transfers(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "worker-outgoing-transfers": lambda: plot_worker_outgoing_transfers(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "worker-executing-tasks": lambda: plot_worker_executing_tasks(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "worker-lifetime": lambda: plot_worker_lifetime(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "file-sizes": lambda: plot_file_sizes(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "file-concurrent-replicas": lambda: plot_file_concurrent_replicas(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "file-retention-time": lambda: plot_file_retention_time(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "file-transferred-size": lambda: plot_file_transferred_size(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "file-created-size": lambda: plot_file_created_size(csv_files_dir, png_files_dir, dpi=dpi, width=width, height=height),
+        "task-execution-details": lambda: plot_task_execution_details(
+            csv_files_dir,
+            png_files_dir,
+            dpi=dpi,
+            max_tasks=max_tasks,
+            width=width,
+            height=height,
+        ),
+    }
+    if section_id in plotters:
+        return plotters[section_id]()
+    return None
 
 
 def combine_pngs_to_pdf(png_paths, pdf_path, **kwargs):
@@ -119,14 +172,19 @@ def combine_pngs_to_pdf(png_paths, pdf_path, **kwargs):
     pass
 
 
-def export_single_template(template_path, args):
+def export_single_template(template_path, args, sections_to_export):
     """Export one runtime template: PNGs + PDF."""
     dirs = get_export_dirs(template_path)
-    ensure_dir(str(dirs["png_files"]), replace=False)
     ensure_dir(str(dirs["pdf_files"]), replace=False)
 
     csv_files_dir = dirs["csv_files"]
-    png_files_dir = dirs["png_files"]
+    # Use --png-dir if specified, else default to {template}/png-files/
+    if getattr(args, "png_dir", None):
+        png_base = Path(args.png_dir).resolve()
+        png_files_dir = png_base / Path(template_path).name
+    else:
+        png_files_dir = dirs["png_files"]
+    ensure_dir(str(png_files_dir), replace=False)
     pdf_files_dir = dirs["pdf_files"]
 
     if not csv_files_dir.exists():
@@ -134,42 +192,57 @@ def export_single_template(template_path, args):
         return False
 
     png_paths = []
-    for section_id in EXPORT_SECTIONS:
-        try:
-            png_path = generate_plot_png(
-                section_id,
-                str(csv_files_dir),
-                str(png_files_dir),
-                dpi=getattr(args, "dpi", 150),
-            )
-            if png_path and os.path.exists(png_path):
-                png_paths.append(png_path)
-        except Exception as e:
-            print(f"  ⚠️  Failed to generate {section_id}: {e}")
+    with create_progress_bar() as progress:
+        section_task = progress.add_task(
+            f"[green]Exporting sections ({Path(template_path).name})",
+            total=len(sections_to_export),
+        )
+        for section_id in sections_to_export:
+            try:
+                section_kwargs = {
+                    "dpi": getattr(args, "dpi", DPI_DEFAULT),
+                    "max_tasks": getattr(args, "max_tasks", MAX_TASKS_PER_TYPE),
+                    "width": getattr(args, "width", CANVAS_WIDTH_INCHES),
+                    "height": getattr(args, "height", CANVAS_HEIGHT_INCHES),
+                }
+                png_path = generate_plot_png(
+                    section_id,
+                    str(csv_files_dir),
+                    str(png_files_dir),
+                    **section_kwargs,
+                )
+                if png_path and os.path.exists(png_path):
+                    png_paths.append(png_path)
+            except Exception as e:
+                print(f"  ⚠️  Failed to generate {section_id}: {e}")
+            finally:
+                progress.advance(section_task)
+
+    # PDF generation disabled for now (only Task Execution Details supported)
+    # if png_paths:
+    #     pdf_name = Path(template_path).name + ".pdf"
+    #     pdf_path = pdf_files_dir / pdf_name
+    #     try:
+    #         combine_pngs_to_pdf(...)
+    #     except Exception as e:
+    #         ...
 
     if png_paths:
-        pdf_name = Path(template_path).name + ".pdf"
-        pdf_path = pdf_files_dir / pdf_name
-        try:
-            combine_pngs_to_pdf(
-                png_paths,
-                str(pdf_path),
-                **{"dpi": getattr(args, "dpi", 150)},
-            )
-            print(f"  ✅ PDF: {pdf_path}")
-        except Exception as e:
-            print(f"  ⚠️  Failed to create PDF: {e}")
+        print(f"  ✅ PNG saved to directory: {png_files_dir}")
     else:
-        print(f"  ⚠️  No PNGs generated, skipping PDF")
+        print("  ⚠️  No PNG generated for this template")
 
     return True
 
 
 def main():
+    sections_with_all = sorted(EXPORT_SECTIONS + ["all"])
+    sections_help_lines = "\n".join([f"  - {s}" for s in sections_with_all])
+
     parser = argparse.ArgumentParser(
         prog="vine_export",
         description="Export TaskVine report to static PNG and PDF from vine_parse CSV output",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        formatter_class=ExportHelpFormatter,
     )
 
     parser.add_argument(
@@ -193,10 +266,51 @@ def main():
     )
 
     parser.add_argument(
+        "--png-dir",
+        type=str,
+        default=None,
+        help="Output directory for PNG files (default: {template}/png-files/ under logs-dir)",
+    )
+
+    parser.add_argument(
         "--dpi",
         type=int,
-        default=150,
+        default=DPI_DEFAULT,
         help="DPI for PNG/PDF output",
+    )
+
+    parser.add_argument(
+        "--max-tasks",
+        type=int,
+        default=MAX_TASKS_PER_TYPE,
+        help="Max tasks per type to plot (reduce if OOM)",
+    )
+
+    parser.add_argument(
+        "--width",
+        type=float,
+        default=CANVAS_WIDTH_INCHES,
+        help="Canvas width in inches",
+    )
+    parser.add_argument(
+        "--height",
+        type=float,
+        default=CANVAS_HEIGHT_INCHES,
+        help="Canvas height in inches",
+    )
+
+    parser.add_argument(
+        "--sections",
+        type=str,
+        nargs="+",
+        default=["all"],
+        metavar="SECTION",
+        help=(
+            "Only export these section IDs (default: all).\n"
+            "Use 'all' to export all sections.\n"
+            "Available sections:\n"
+            f"{sections_help_lines}"
+        ),
     )
 
     parser.add_argument(
@@ -207,6 +321,20 @@ def main():
     )
 
     args = parser.parse_args()
+    # Resolve selected sections
+    if args.sections == ["all"]:
+        selected_sections = EXPORT_SECTIONS[:]
+    else:
+        normalized = [s.strip() for s in args.sections]
+        if "all" in normalized:
+            selected_sections = EXPORT_SECTIONS[:]
+        else:
+            invalid = [s for s in normalized if s not in EXPORT_SECTIONS]
+            if invalid:
+                print(f"❌ Unknown section(s): {', '.join(invalid)}")
+                print(f"   Valid sections: {', '.join(sorted(EXPORT_SECTIONS))}")
+                sys.exit(1)
+            selected_sections = normalized
 
     check_pip_updates()
 
@@ -250,7 +378,7 @@ def main():
     for template in valid_paths:
         print(f"\n=== Exporting: {template}")
         try:
-            export_single_template(template, args)
+            export_single_template(template, args, selected_sections)
             success += 1
             print(f"✅ Successfully exported: {template}")
         except Exception as e:

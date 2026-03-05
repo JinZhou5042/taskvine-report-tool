@@ -402,6 +402,74 @@ def get_size_unit_and_scale(max_file_size_mb) -> tuple[str, float]:
     else:
         return 'Bytes', 1024 * 1024
 
+def task_execution_safe_int(row, key):
+    """Safely get int from row; handles missing column, NaN, and float. Used by task_execution_details."""
+    val = row.get(key, None) if hasattr(row, "get") else None
+    if val is None or (hasattr(val, "__float__") and pd.isna(val)):
+        return None
+    try:
+        return int(float(val))
+    except (TypeError, ValueError):
+        return None
+
+
+def task_execution_safe_float(row, key):
+    """Safely get float from row. Used by task_execution_details."""
+    val = row.get(key, None) if hasattr(row, "get") else None
+    if val is None or pd.isna(val):
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_worker_time_list(val):
+    """Parse time_connected/time_disconnected from CSV (list as string)."""
+    import ast
+    if pd.isna(val):
+        return []
+    try:
+        parsed = ast.literal_eval(val) if isinstance(val, str) else val
+        return list(parsed) if parsed is not None else []
+    except Exception:
+        return []
+
+
+def get_time_domain_from_csv(csv_files_dir):
+    """
+    Get x_domain from time_domain.csv (same as vine_report get_current_time_domain).
+    Returns [0, max_time - min_time] in seconds.
+    """
+    time_domain_path = os.path.join(csv_files_dir, "time_domain.csv")
+    if not os.path.exists(time_domain_path):
+        return None
+    df = pd.read_csv(time_domain_path)
+    min_time = df["MIN_TIME"].iloc[0]
+    max_time = df["MAX_TIME"].iloc[0]
+    return [0, max_time - min_time]
+
+
+def compute_task_execution_x_domain(successful_tasks, unsuccessful_tasks):
+    """
+    Compute x_domain from task data: first task start -> last task end.
+    Returns [x_min, x_max] in seconds (relative to base_time).
+    """
+    task_starts = []
+    task_ends = []
+    for t in successful_tasks:
+        task_starts.append(t.get("when_running"))
+        task_ends.append(t.get("when_retrieved") or t.get("when_waiting_retrieval"))
+    for t in unsuccessful_tasks:
+        task_starts.append(t.get("when_running"))
+        task_ends.append(t.get("when_failure_happens"))
+    valid_starts = [x for x in task_starts if x is not None and not (hasattr(x, "__float__") and np.isnan(x))]
+    valid_ends = [x for x in task_ends if x is not None and not (hasattr(x, "__float__") and np.isnan(x))]
+    if valid_starts and valid_ends:
+        return [min(valid_starts), max(valid_ends)]
+    return [0, 1]
+
+
 def read_csv_to_fd(csv_path):
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"CSV file not found: {csv_path}")

@@ -68,6 +68,7 @@ setup(
         "polars",
         "numpy",
         "pyarrow",
+        "matplotlib",
     ],
     extras_require={
         "dev": [
