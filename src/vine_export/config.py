@@ -2,7 +2,7 @@
 General configuration for vine_export plots.
 
 Shared defaults and helpers for all plot modules.
-Aligns with vine_report processing where applicable.
+Aligns with vine_serve processing where applicable.
 """
 
 # --- Plot defaults ---
@@ -61,9 +61,9 @@ TIME_TICK_ROUND_DIGITS = 2
 # --- Rendering limits for dense multi-series charts ---
 # Keep these configurable for performance/readability trade-offs.
 # Max number of overlaid series lines to render for dense plots.
-MAX_MULTI_SERIES_LINES = 140
+MAX_MULTI_SERIES_LINES = 100
 # Transparency for each line in dense multi-series rendering.
-MULTI_SERIES_LINE_ALPHA = 0.22
+MULTI_SERIES_LINE_ALPHA = 0.75
 # Line width for dense multi-series rendering.
 MULTI_SERIES_LINE_WIDTH = 1.8
 
@@ -85,9 +85,40 @@ COLOR_RETRIEVING = "#cc5a12"
 # Color for completed/done state.
 COLOR_DONE = "#2ca02c"
 
-# Task downsampling (same default as vine_report DOWNSAMPLE_TASK_BARS=100000)
+# Task downsampling (same default as vine_serve DOWNSAMPLE_TASK_BARS=100000)
 # Upper bound of tasks plotted per task type to avoid huge render cost.
 MAX_TASKS_PER_TYPE = 100000
+
+# --- HTML export style defaults (self-contained report) ---
+# Initial content width as a percentage of browser viewport width.
+HTML_DEFAULT_CONTENT_WIDTH_PERCENT = 50
+# Minimum and maximum allowed values in the content-width slider.
+HTML_MIN_CONTENT_WIDTH_PERCENT = 35
+HTML_MAX_CONTENT_WIDTH_PERCENT = 100
+# Max viewport percentage cap for the centered content container.
+HTML_MAX_CONTENT_WIDTH_VIEWPORT_PERCENT = 96
+# Main container padding (CSS shorthand: top right bottom left).
+HTML_WRAP_PADDING = "20px 18px 28px"
+# Typography sizes (px) for main report headings/body labels.
+HTML_H1_FONT_SIZE_PX = 28
+HTML_SUBTEXT_FONT_SIZE_PX = 14
+HTML_SECTION_TITLE_FONT_SIZE_PX = 20
+# Shared card/control visual style.
+HTML_CARD_BORDER_RADIUS_PX = 10
+HTML_CARD_BORDER_COLOR = "#e6eaf1"
+HTML_CARD_BG_COLOR = "#fff"
+# Control panel spacing and typography.
+HTML_KNOB_PADDING = "10px 12px"
+HTML_KNOB_MARGIN_BOTTOM_PX = 12
+HTML_KNOB_ROW_GAP_PX = 10
+HTML_SLIDER_MAX_WIDTH_PX = 360
+# Section card spacing and image decoration.
+HTML_SECTION_CARD_PADDING = "12px 12px 14px"
+HTML_SECTION_CARD_MARGIN_Y_PX = 12
+HTML_IMAGE_BORDER_RADIUS_PX = 8
+HTML_IMAGE_BORDER_COLOR = "#edf0f5"
+# Table-of-contents columns.
+HTML_TOC_COLUMNS = 2
 
 
 def downsample_tasks(tasks, key="execution_time", max_tasks=MAX_TASKS_PER_TYPE):
@@ -104,7 +135,7 @@ def downsample_tasks(tasks, key="execution_time", max_tasks=MAX_TASKS_PER_TYPE):
     """
     if len(tasks) <= max_tasks:
         return tasks
-    # Same as vine_report: sort by execution_time descending, take top max_tasks
+    # Same as vine_serve: sort by execution_time descending, take top max_tasks
     tasks = sorted(tasks, key=lambda x: x.get(key) if x.get(key) is not None else 0, reverse=True)
     return tasks[:max_tasks]
 

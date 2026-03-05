@@ -2,7 +2,7 @@
 Plot Task Execution Details section for vine_export.
 
 Reads task_execution_details.csv, draws worker/task bars with matplotlib.
-Same data processing as vine_report (shared utils, config).
+Same data processing as vine_serve (shared utils, config).
 """
 
 import os
@@ -36,7 +36,7 @@ from src.vine_export.config import (
     downsample_tasks,
 )
 
-# Colors aligned with vine_report LEGEND_SCHEMA
+# Colors aligned with vine_serve LEGEND_SCHEMA
 WORKER_COLOR = "lightgrey"
 WORKER_ALPHA = 0.3
 PHASE_COLORS = {
@@ -167,7 +167,7 @@ def load_task_execution_data(csv_files_dir):
             }
         )
 
-    # y_domain: worker_id-core_id (same as vine_report route)
+    # y_domain: worker_id-core_id (same as vine_serve route)
     band_set = set()
     for w in workers:
         cores = int(w.get("cores", 1) or 1)
@@ -180,7 +180,7 @@ def load_task_execution_data(csv_files_dir):
             band_set.add(f"{wid}-{cid}")
     y_domain = sorted(band_set, key=lambda k: (int(k.split("-")[0]), int(k.split("-")[1])))
 
-    # x_domain: use time_domain.csv [0, MAX_TIME - MIN_TIME] to match vine_report
+    # x_domain: use time_domain.csv [0, MAX_TIME - MIN_TIME] to match vine_serve
     x_domain = get_time_domain_from_csv(csv_files_dir)
     if x_domain is None:
         x_domain = compute_task_execution_x_domain(successful_tasks, unsuccessful_tasks)
@@ -227,7 +227,7 @@ def plot_task_execution_details(
     unsuccessful_tasks = downsample_tasks(unsuccessful_tasks, max_tasks=max_tasks)
 
     # Keep x_domain from time_domain.csv (do NOT recompute from tasks)
-    # Rebuild y_domain after downsampling (same strategy as vine_report)
+    # Rebuild y_domain after downsampling (same strategy as vine_serve)
     band_set = set()
     for w in workers:
         cores = int(w.get("cores", 1) or 1)
@@ -429,7 +429,7 @@ def plot_task_execution_details(
     ax.set_ylabel("Worker", fontsize=LABEL_SIZE, labelpad=Y_LABEL_PAD)
     ax.tick_params(axis="both", labelsize=TICK_LABEL_SIZE)
 
-    # X-axis: match vine_report (0, 8007.22, 16014.45, 24021.67, 32028.89)
+    # X-axis: match vine_serve (0, 8007.22, 16014.45, 24021.67, 32028.89)
     x_tick_values = compute_linear_tick_values(x_domain, num_ticks=5, round_digits=2)
     ax.set_xticks(x_tick_values)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.2f} s"))

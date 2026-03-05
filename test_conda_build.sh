@@ -30,7 +30,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "Testing command line tools..."
     vine_parse --help > /dev/null && echo "✅ vine_parse command available"
-    vine_report --help > /dev/null && echo "✅ vine_report command available"
+    vine_serve --help > /dev/null && echo "✅ vine_serve command available"
     
 else
     echo "❌ Build failed"

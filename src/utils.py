@@ -438,7 +438,7 @@ def parse_worker_time_list(val):
 
 def get_time_domain_from_csv(csv_files_dir):
     """
-    Get x_domain from time_domain.csv (same as vine_report get_current_time_domain).
+    Get x_domain from time_domain.csv (same as vine_serve get_current_time_domain).
     Returns [0, max_time - min_time] in seconds.
     """
     time_domain_path = os.path.join(csv_files_dir, "time_domain.csv")

@@ -23,6 +23,26 @@ from src.vine_export.config import (
     CANVAS_WIDTH_INCHES,
     DPI_DEFAULT,
     MAX_TASKS_PER_TYPE,
+    HTML_DEFAULT_CONTENT_WIDTH_PERCENT,
+    HTML_MIN_CONTENT_WIDTH_PERCENT,
+    HTML_MAX_CONTENT_WIDTH_PERCENT,
+    HTML_MAX_CONTENT_WIDTH_VIEWPORT_PERCENT,
+    HTML_WRAP_PADDING,
+    HTML_H1_FONT_SIZE_PX,
+    HTML_SUBTEXT_FONT_SIZE_PX,
+    HTML_SECTION_TITLE_FONT_SIZE_PX,
+    HTML_CARD_BORDER_RADIUS_PX,
+    HTML_CARD_BORDER_COLOR,
+    HTML_CARD_BG_COLOR,
+    HTML_KNOB_PADDING,
+    HTML_KNOB_MARGIN_BOTTOM_PX,
+    HTML_KNOB_ROW_GAP_PX,
+    HTML_SLIDER_MAX_WIDTH_PX,
+    HTML_SECTION_CARD_PADDING,
+    HTML_SECTION_CARD_MARGIN_Y_PX,
+    HTML_IMAGE_BORDER_RADIUS_PX,
+    HTML_IMAGE_BORDER_COLOR,
+    HTML_TOC_COLUMNS,
 )
 from src import __version__
 
@@ -85,8 +105,9 @@ def get_export_dirs(runtime_template):
     }
 
 
-# --- Plot section IDs (aligned with vine_report modules) ---
+# --- Plot section IDs (aligned with vine_serve modules) ---
 EXPORT_SECTIONS = [
+    "task-execution-details",
     "task-concurrency",
     "task-response-time",
     "task-execution-time",
@@ -102,7 +123,6 @@ EXPORT_SECTIONS = [
     "file-retention-time",
     "file-transferred-size",
     "file-created-size",
-    "task-execution-details",
 ]
 
 
@@ -221,6 +241,9 @@ def build_self_contained_html_report(items, html_path, template_name):
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>TaskVine Report - {escape(template_name)}</title>
   <style>
+    :root {{
+      --content-width-percent: {HTML_DEFAULT_CONTENT_WIDTH_PERCENT};
+    }}
     body {{
       margin: 0;
       background: #f6f8fb;
@@ -229,23 +252,48 @@ def build_self_contained_html_report(items, html_path, template_name):
       line-height: 1.45;
     }}
     .wrap {{
-      max-width: 1280px;
+      width: min(calc(var(--content-width-percent) * 1vw), {HTML_MAX_CONTENT_WIDTH_VIEWPORT_PERCENT}vw);
       margin: 0 auto;
-      padding: 20px 18px 28px;
+      padding: {HTML_WRAP_PADDING};
+    }}
+    .layout-knob {{
+      background: {HTML_CARD_BG_COLOR};
+      border: 1px solid {HTML_CARD_BORDER_COLOR};
+      border-radius: {HTML_CARD_BORDER_RADIUS_PX}px;
+      padding: {HTML_KNOB_PADDING};
+      margin-bottom: {HTML_KNOB_MARGIN_BOTTOM_PX}px;
+      font-size: {HTML_SUBTEXT_FONT_SIZE_PX}px;
+    }}
+    .layout-knob .row {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: {HTML_KNOB_ROW_GAP_PX}px;
+      flex-wrap: nowrap;
+    }}
+    .layout-knob input[type="range"] {{
+      width: min({HTML_SLIDER_MAX_WIDTH_PX}px, 80vw);
+    }}
+    .layout-knob .value {{
+      min-width: 56px;
+      color: #1d4ed8;
+      font-weight: 600;
+      white-space: nowrap;
+      display: inline-block;
     }}
     h1 {{
       margin: 0 0 4px;
-      font-size: 28px;
+      font-size: {HTML_H1_FONT_SIZE_PX}px;
       font-weight: 700;
     }}
     .sub {{
       color: #667085;
-      font-size: 14px;
+      font-size: {HTML_SUBTEXT_FONT_SIZE_PX}px;
       margin-bottom: 16px;
     }}
     .repo {{
       margin: 0 0 16px;
-      font-size: 14px;
+      font-size: {HTML_SUBTEXT_FONT_SIZE_PX}px;
     }}
     .repo a {{
       color: #1d4ed8;
@@ -255,16 +303,16 @@ def build_self_contained_html_report(items, html_path, template_name):
       text-decoration: underline;
     }}
     .toc {{
-      background: #fff;
-      border: 1px solid #e6eaf1;
-      border-radius: 10px;
+      background: {HTML_CARD_BG_COLOR};
+      border: 1px solid {HTML_CARD_BORDER_COLOR};
+      border-radius: {HTML_CARD_BORDER_RADIUS_PX}px;
       padding: 12px 14px;
       margin-bottom: 16px;
     }}
     .toc ul {{
       margin: 8px 0 0;
       padding-left: 18px;
-      columns: 2;
+      columns: {HTML_TOC_COLUMNS};
     }}
     .toc a {{
       color: #1d4ed8;
@@ -274,30 +322,38 @@ def build_self_contained_html_report(items, html_path, template_name):
       text-decoration: underline;
     }}
     .card {{
-      background: #fff;
-      border: 1px solid #e6eaf1;
-      border-radius: 10px;
-      padding: 12px 12px 14px;
-      margin: 12px 0;
+      background: {HTML_CARD_BG_COLOR};
+      border: 1px solid {HTML_CARD_BORDER_COLOR};
+      border-radius: {HTML_CARD_BORDER_RADIUS_PX}px;
+      padding: {HTML_SECTION_CARD_PADDING};
+      margin: {HTML_SECTION_CARD_MARGIN_Y_PX}px 0;
     }}
     .card h2 {{
       margin: 0 0 4px;
-      font-size: 20px;
+      font-size: {HTML_SECTION_TITLE_FONT_SIZE_PX}px;
     }}
     img {{
       display: block;
       width: 100%;
       height: auto;
-      border: 1px solid #edf0f5;
-      border-radius: 8px;
+      border: 1px solid {HTML_IMAGE_BORDER_COLOR};
+      border-radius: {HTML_IMAGE_BORDER_RADIUS_PX}px;
       background: #fff;
     }}
   </style>
 </head>
 <body>
   <main class="wrap">
+    <div class="layout-knob">
+      <div class="row">
+        <strong>Content Width</strong>
+        <input id="width-slider" type="range" min="{HTML_MIN_CONTENT_WIDTH_PERCENT}" max="{HTML_MAX_CONTENT_WIDTH_PERCENT}" step="1" value="{HTML_DEFAULT_CONTENT_WIDTH_PERCENT}"/>
+        <span class="value" id="width-value">{HTML_DEFAULT_CONTENT_WIDTH_PERCENT}%</span>
+      </div>
+    </div>
     <h1>TaskVine Export Report</h1>
-    <div class="sub">Template: {escape(template_name)} | Generated: {escape(generated_at)} | Sections: {len(section_blocks)}</div>
+    <div class="sub">Template: {escape(template_name)}</div>
+    <div class="sub">Generated: {escape(generated_at)}</div>
     <div class="repo">GitHub: <a href="{repo_url}" target="_blank" rel="noopener noreferrer">{repo_url}</a></div>
     <nav class="toc">
       <strong>Sections</strong>
@@ -307,6 +363,29 @@ def build_self_contained_html_report(items, html_path, template_name):
     </nav>
     {''.join(section_blocks)}
   </main>
+  <script>
+    (function () {{
+      const slider = document.getElementById('width-slider');
+      const valueText = document.getElementById('width-value');
+      if (!slider || !valueText) return;
+      let pendingValue = slider.value;
+      const apply = (v) => {{
+        document.documentElement.style.setProperty('--content-width-percent', String(v));
+        valueText.textContent = `${{v}}%`;
+      }};
+      apply(pendingValue);
+      // During dragging, only update label; apply layout change on release.
+      slider.addEventListener('input', (e) => {{
+        pendingValue = e.target.value;
+        valueText.textContent = `${{pendingValue}}%`;
+      }});
+      const commit = () => apply(pendingValue);
+      slider.addEventListener('change', commit);     // fallback
+      slider.addEventListener('mouseup', commit);    // desktop mouse
+      slider.addEventListener('touchend', commit);   // mobile touch
+      slider.addEventListener('pointerup', commit);  // pointer devices
+    }})();
+  </script>
 </body>
 </html>
 """
@@ -483,7 +562,8 @@ def main():
                 print(f"❌ Unknown section(s): {', '.join(invalid)}")
                 print(f"   Valid sections: {', '.join(sorted(EXPORT_SECTIONS))}")
                 sys.exit(1)
-            selected_sections = normalized
+            # Keep export arrangement consistent with front-end section order.
+            selected_sections = [s for s in EXPORT_SECTIONS if s in set(normalized)]
 
     check_pip_updates()
 

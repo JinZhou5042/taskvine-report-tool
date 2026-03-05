@@ -37,7 +37,7 @@ setup(
         "Bug Reports": "https://github.com/cooperative-computing-lab/taskvine-report-tool/issues",
         "CCL Homepage": "https://ccl.cse.nd.edu/",
     },
-    packages=["src", "src.vine_parse", "src.vine_report", "src.vine_report.routes", "src.vine_export"],
+    packages=["src", "src.vine_parse", "src.vine_serve", "src.vine_serve.routes", "src.vine_export"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -86,13 +86,13 @@ setup(
     entry_points={
         "console_scripts": [
             "vine_parse=src.vine_parse.parse:main",
-            "vine_report=src.vine_report.report:main",
+            "vine_serve=src.vine_serve.report:main",
             "vine_export=src.vine_export.export:main",
         ],
     },
     include_package_data=True,
     package_data={
-        "src.vine_report": [
+        "src.vine_serve": [
             "templates/*",
             "templates/**/*",
             "static/*",

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-vine_report command - Start TaskVine Report Web Server
+vine_serve command - Start TaskVine Serve Web Server
 
 This command starts the web-based visualization interface for TaskVine logs.
 """
@@ -20,42 +20,42 @@ warnings.filterwarnings("ignore", message="This is a development server.*")
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from src.vine_report.routes.runtime_template import runtime_template_bp
-from src.vine_report.routes.worker_storage_consumption import (
+from src.vine_serve.routes.runtime_template import runtime_template_bp
+from src.vine_serve.routes.worker_storage_consumption import (
     worker_storage_consumption_bp,
 )
-from src.vine_report.routes.file_sizes import file_sizes_bp
-from src.vine_report.routes.file_concurrent_replicas import file_concurrent_replicas_bp
-from src.vine_report.routes.task_concurrency import task_concurrency_bp
-from src.vine_report.routes.task_execution_time import task_execution_time_bp
-from src.vine_report.routes.task_execution_details import task_execution_details_bp
-from src.vine_report.routes.task_response_time import task_response_time_bp
-from src.vine_report.routes.task_retrieval_time import task_retrieval_time_bp
-from src.vine_report.routes.task_dependents import task_dependents_bp
-from src.vine_report.routes.worker_concurrency import worker_concurrency_bp
-from src.vine_report.routes.worker_executing_tasks import worker_executing_tasks_bp
-from src.vine_report.routes.worker_waiting_retrieval_tasks import (
+from src.vine_serve.routes.file_sizes import file_sizes_bp
+from src.vine_serve.routes.file_concurrent_replicas import file_concurrent_replicas_bp
+from src.vine_serve.routes.task_concurrency import task_concurrency_bp
+from src.vine_serve.routes.task_execution_time import task_execution_time_bp
+from src.vine_serve.routes.task_execution_details import task_execution_details_bp
+from src.vine_serve.routes.task_response_time import task_response_time_bp
+from src.vine_serve.routes.task_retrieval_time import task_retrieval_time_bp
+from src.vine_serve.routes.task_dependents import task_dependents_bp
+from src.vine_serve.routes.worker_concurrency import worker_concurrency_bp
+from src.vine_serve.routes.worker_executing_tasks import worker_executing_tasks_bp
+from src.vine_serve.routes.worker_waiting_retrieval_tasks import (
     worker_waiting_retrieval_tasks_bp,
 )
-from src.vine_report.routes.worker_lifetime import worker_lifetime_bp
-from src.vine_report.routes.file_transferred_size import file_transferred_size_bp
-from src.vine_report.routes.file_created_size import file_created_size_bp
-from src.vine_report.routes.file_retention_time import file_retention_time_bp
-from src.vine_report.routes.runtime_state import RuntimeState
-from src.vine_report.routes.worker_transfers import worker_transfers_bp
-from src.vine_report.routes.task_completion_percentiles import (
+from src.vine_serve.routes.worker_lifetime import worker_lifetime_bp
+from src.vine_serve.routes.file_transferred_size import file_transferred_size_bp
+from src.vine_serve.routes.file_created_size import file_created_size_bp
+from src.vine_serve.routes.file_retention_time import file_retention_time_bp
+from src.vine_serve.routes.runtime_state import RuntimeState
+from src.vine_serve.routes.worker_transfers import worker_transfers_bp
+from src.vine_serve.routes.task_completion_percentiles import (
     task_completion_percentiles_bp,
 )
-from src.vine_report.routes.task_dependencies import task_dependencies_bp
-from src.vine_report.routes.lock import lock_bp
-from src.vine_report.routes.task_subgraphs import task_subgraphs_bp
-from src.vine_report.routes.export_csv_files import register_csv_export_routes
+from src.vine_serve.routes.task_dependencies import task_dependencies_bp
+from src.vine_serve.routes.lock import lock_bp
+from src.vine_serve.routes.task_subgraphs import task_subgraphs_bp
+from src.vine_serve.routes.export_csv_files import register_csv_export_routes
 from src.utils import check_pip_updates
 from src import __version__
 
 
 def create_app(logs_dir, downsample_task_bars=100000, downsample_points=10000):
-    package_dir = os.path.dirname(__file__)  # vine_report/
+    package_dir = os.path.dirname(__file__)  # vine_serve/
     template_dir = os.path.join(package_dir, "templates")
     static_dir = os.path.join(package_dir, "static")
 
@@ -173,7 +173,7 @@ def get_local_ip_addresses():
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="vine_report",
+        prog="vine_serve",
         description="Start TaskVine Report web server for log visualization",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )

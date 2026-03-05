@@ -118,14 +118,35 @@ def _plot_multi_series_time(
     ranked = []
     for col in series_cols:
         y = pd.to_numeric(df[col], errors="coerce")
+        valid_count = int(y.notna().sum())
         vmax = y.max(skipna=True)
-        if pd.notna(vmax) and vmax > 0:
-            ranked.append((col, float(vmax)))
+        if valid_count > 0 and pd.notna(vmax) and vmax > 0:
+            ranked.append((col, valid_count, float(vmax)))
     if not ranked:
         return None
 
-    ranked.sort(key=lambda kv: kv[1], reverse=True)
-    selected_cols = [c for c, _ in ranked[:MAX_MULTI_SERIES_LINES]]
+    # Priority rule:
+    # 1) series with more valid data points
+    # 2) then higher peak value
+    ranked.sort(key=lambda kv: (kv[1], kv[2]), reverse=True)
+
+    # Always keep at least one line that contains the global maximum value.
+    global_max = max(v for _, _, v in ranked)
+    must_keep = {c for c, _, v in ranked if v == global_max}
+
+    if len(ranked) > MAX_MULTI_SERIES_LINES:
+        selected = []
+        for c, _, _ in ranked:
+            if c in must_keep and c not in selected:
+                selected.append(c)
+        for c, _, _ in ranked:
+            if len(selected) >= MAX_MULTI_SERIES_LINES:
+                break
+            if c not in selected:
+                selected.append(c)
+        selected_cols = selected[:MAX_MULTI_SERIES_LINES]
+    else:
+        selected_cols = [c for c, _, _ in ranked]
 
     fig, ax = make_figure(plt, width=width, height=height)
     ymax = 0.0
@@ -157,11 +178,11 @@ def _plot_multi_series_time(
     if len(ranked) > len(selected_cols):
         ax.text(
             0.99,
-            0.01,
+            0.99,
             f"Showing top {len(selected_cols)} of {len(ranked)} series",
             transform=ax.transAxes,
             ha="right",
-            va="bottom",
+            va="top",
             fontsize=max(8, LEGEND_FONT_SIZE - 4),
             color=COLOR_NEUTRAL,
         )
