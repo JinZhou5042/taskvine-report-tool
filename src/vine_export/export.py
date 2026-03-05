@@ -7,10 +7,13 @@ saves to png-files/, and combines into a single PDF in pdf-files/.
 """
 
 import argparse
+import base64
 import os
 import sys
 import fnmatch
 import traceback as tb
+from datetime import datetime
+from html import escape
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -77,6 +80,7 @@ def get_export_dirs(runtime_template):
     return {
         "png_files": base / "png-files",
         "pdf_files": base / "pdf-files",
+        "html_files": base / "html-files",
         "csv_files": base / "csv-files",
     }
 
@@ -172,6 +176,145 @@ def combine_pngs_to_pdf(png_paths, pdf_path, **kwargs):
     pass
 
 
+def _section_title(section_id):
+    return section_id.replace("-", " ").title()
+
+
+def build_self_contained_html_report(items, html_path, template_name):
+    """
+    Build a single self-contained HTML report.
+
+    items: list of dicts with keys {"section_id", "png_path"}.
+    """
+    ensure_dir(str(Path(html_path).parent), replace=False)
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    repo_url = "https://github.com/cooperative-computing-lab/taskvine-report-tool"
+
+    toc_rows = []
+    section_blocks = []
+    for idx, item in enumerate(items, start=1):
+        section_id = item["section_id"]
+        png_path = item["png_path"]
+        anchor = f"sec-{idx}"
+        title = _section_title(section_id)
+        try:
+            with open(png_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("ascii")
+        except OSError:
+            # Skip broken image paths to keep report generation robust.
+            continue
+
+        toc_rows.append(f'<li><a href="#{anchor}">{escape(title)}</a></li>')
+        section_blocks.append(
+            f"""
+            <section class="card" id="{anchor}">
+              <h2>{escape(title)}</h2>
+              <img src="data:image/png;base64,{b64}" alt="{escape(title)}"/>
+            </section>
+            """
+        )
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>TaskVine Report - {escape(template_name)}</title>
+  <style>
+    body {{
+      margin: 0;
+      background: #f6f8fb;
+      color: #1f2937;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      line-height: 1.45;
+    }}
+    .wrap {{
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 20px 18px 28px;
+    }}
+    h1 {{
+      margin: 0 0 4px;
+      font-size: 28px;
+      font-weight: 700;
+    }}
+    .sub {{
+      color: #667085;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }}
+    .repo {{
+      margin: 0 0 16px;
+      font-size: 14px;
+    }}
+    .repo a {{
+      color: #1d4ed8;
+      text-decoration: none;
+    }}
+    .repo a:hover {{
+      text-decoration: underline;
+    }}
+    .toc {{
+      background: #fff;
+      border: 1px solid #e6eaf1;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+    }}
+    .toc ul {{
+      margin: 8px 0 0;
+      padding-left: 18px;
+      columns: 2;
+    }}
+    .toc a {{
+      color: #1d4ed8;
+      text-decoration: none;
+    }}
+    .toc a:hover {{
+      text-decoration: underline;
+    }}
+    .card {{
+      background: #fff;
+      border: 1px solid #e6eaf1;
+      border-radius: 10px;
+      padding: 12px 12px 14px;
+      margin: 12px 0;
+    }}
+    .card h2 {{
+      margin: 0 0 4px;
+      font-size: 20px;
+    }}
+    img {{
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid #edf0f5;
+      border-radius: 8px;
+      background: #fff;
+    }}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>TaskVine Export Report</h1>
+    <div class="sub">Template: {escape(template_name)} | Generated: {escape(generated_at)} | Sections: {len(section_blocks)}</div>
+    <div class="repo">GitHub: <a href="{repo_url}" target="_blank" rel="noopener noreferrer">{repo_url}</a></div>
+    <nav class="toc">
+      <strong>Sections</strong>
+      <ul>
+        {''.join(toc_rows)}
+      </ul>
+    </nav>
+    {''.join(section_blocks)}
+  </main>
+</body>
+</html>
+"""
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    return html_path
+
+
 def export_single_template(template_path, args, sections_to_export):
     """Export one runtime template: PNGs + PDF."""
     dirs = get_export_dirs(template_path)
@@ -182,16 +325,19 @@ def export_single_template(template_path, args, sections_to_export):
     if getattr(args, "png_dir", None):
         png_base = Path(args.png_dir).resolve()
         png_files_dir = png_base / Path(template_path).name
+        html_files_dir = png_base / Path(template_path).name / "html-files"
     else:
         png_files_dir = dirs["png_files"]
+        html_files_dir = dirs["html_files"]
     ensure_dir(str(png_files_dir), replace=False)
+    ensure_dir(str(html_files_dir), replace=False)
     pdf_files_dir = dirs["pdf_files"]
 
     if not csv_files_dir.exists():
         print(f"  ⚠️  csv-files not found, skipping: {template_path}")
         return False
 
-    png_paths = []
+    png_items = []
     with create_progress_bar() as progress:
         section_task = progress.add_task(
             f"[green]Exporting sections ({Path(template_path).name})",
@@ -212,7 +358,7 @@ def export_single_template(template_path, args, sections_to_export):
                     **section_kwargs,
                 )
                 if png_path and os.path.exists(png_path):
-                    png_paths.append(png_path)
+                    png_items.append({"section_id": section_id, "png_path": png_path})
             except Exception as e:
                 print(f"  ⚠️  Failed to generate {section_id}: {e}")
             finally:
@@ -227,8 +373,11 @@ def export_single_template(template_path, args, sections_to_export):
     #     except Exception as e:
     #         ...
 
-    if png_paths:
+    if png_items:
+        html_path = html_files_dir / f"{Path(template_path).name}.html"
+        build_self_contained_html_report(png_items, str(html_path), Path(template_path).name)
         print(f"  ✅ PNG saved to directory: {png_files_dir}")
+        print(f"  ✅ HTML saved to: {html_path}")
     else:
         print("  ⚠️  No PNG generated for this template")
 

@@ -8,7 +8,7 @@ Aligns with vine_report processing where applicable.
 # --- Plot defaults ---
 # Default output DPI for saved PNG images.
 # Final pixel size = figure inches * DPI.
-DPI_DEFAULT = 150
+DPI_DEFAULT = 500
 # Matplotlib backend used in headless/server environments.
 MATPLOTLIB_BACKEND = "Agg"
 
