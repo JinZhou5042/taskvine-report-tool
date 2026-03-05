@@ -499,6 +499,7 @@ class DataParser:
             pass
         elif "RUNNING (2) to DONE (5)" in line:
             print(f"Warning: task {task_id} state change: from RUNNING (2) to DONE (5)")
+            self._reap_task_if_running(task)
             pass
         elif "DONE (5) to WAITING_RETRIEVAL (3)" in line:
             print(f"Warning: task {task_id} state change: from DONE (5) to WAITING_RETRIEVAL (3)")
@@ -509,10 +510,8 @@ class DataParser:
             task.set_task_status(timestamp, 1)
         elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
             task.set_when_waiting_retrieval(timestamp)
-            # update the coremap
-            if not task.worker_entry:
-                raise ValueError(f"task {task_id} has no worker entry")
-            worker = self.workers[task.worker_entry]
+            # Task execution has ended on worker; release occupied cores now.
+            self._reap_task_if_running(task)
         elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
             task.set_when_retrieved(timestamp)
         elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
@@ -523,6 +522,7 @@ class DataParser:
                 worker.tasks_completed.append(task)
         elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
                 "RUNNING (2) to READY (1)" in line:             # task failure
+            self._reap_task_if_running(task)
             if task.worker_entry:
                 worker = self.workers[task.worker_entry]
                 worker.tasks_failed.append(task)
@@ -561,9 +561,7 @@ class DataParser:
                 print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
             else:
                 task.set_task_status(timestamp, 12 << 3)
-            if task.worker_entry:
-                worker = self.workers[task.worker_entry]
-                worker.reap_task(task)
+            self._reap_task_if_running(task)
         else:
             raise ValueError(f"unrecognized state change: {line}")
         
@@ -893,6 +891,15 @@ class DataParser:
             # if no busy on was above then the task commission failed and sending task to worker entry is None
             task.set_task_status(when_running, 43 << 3)   # failed to dispatch
         self.sending_task_to_worker_entry = None
+
+    def _reap_task_if_running(self, task):
+        """Release worker core slots if task is tracked as running."""
+        if not task.worker_entry:
+            return
+        worker = self.workers.get(task.worker_entry)
+        if worker is None:
+            return
+        worker.reap_task(task)
 
     def parse_debug(self):
         # Remove existing debug.cleaned file if exists

@@ -71,6 +71,15 @@ class WorkerInfo:
 
     def run_task(self, task):
         assert self.coremap is not None
+        # Function tasks routed through a library use library slots rather than
+        # worker coremap lanes. Keep cores_requested semantics on the task, but
+        # do not consume a coremap bit here.
+        if getattr(task, "needs_library", False):
+            if not task.core_id:
+                task.core_id.append(0)
+            self.tasks_running.add(task.task_id)
+            return 0
+
         # Library function tasks (cores_requested=0) do not occupy worker cores
         cores = task.cores_requested if task.cores_requested is not None else 1
         if cores == 0:
