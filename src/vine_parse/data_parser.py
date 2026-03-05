@@ -758,8 +758,20 @@ class DataParser:
                 self.sending_task = None
             elif "cores" in parts:
                 cores_val = int(float(parts[parts.index("cores") + 1]))
+                # provides_library task is the library process itself; force 0 core
+                # so it never occupies worker core slots in visualization/accounting.
+                if getattr(self.sending_task, "provides_library", False):
+                    if not getattr(self.sending_task, "is_library_task", False):
+                        raise ValueError(
+                            f"task {self.sending_task.task_id} has provides_library but is_library_task is False"
+                        )
+                    cores_val = 0
                 # needs_library tasks report cores 0 but should use 1 for coremap/display
-                if cores_val == 0 and getattr(self.sending_task, 'needs_library', False):
+                if (
+                    cores_val == 0
+                    and getattr(self.sending_task, 'needs_library', False)
+                    and not getattr(self.sending_task, "provides_library", False)
+                ):
                     cores_val = 1
                 self.sending_task.set_cores_requested(cores_val)
             elif "gpus" in parts:
@@ -773,6 +785,13 @@ class DataParser:
                     int(float(parts[parts.index("disk") + 1])))
             elif "needs_library" in parts:
                 self.sending_task.needs_library = True
+            elif "provides_library" in parts:
+                self.sending_task.provides_library = True
+                # Enforce library identity for provides_library tasks.
+                self.sending_task.is_library_task = True
+                # If cores was parsed earlier, normalize it to 0.
+                if getattr(self.sending_task, "cores_requested", None) not in (None, 0):
+                    self.sending_task.cores_requested = 0
             elif "category" in parts:
                 self.sending_task.set_category(
                     parts[parts.index("category") + 1])

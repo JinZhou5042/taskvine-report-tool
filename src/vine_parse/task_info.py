@@ -69,6 +69,9 @@ class TaskInfo:
         self.execution_time = None
 
         self.is_library_task = False
+        # True when task payload contains "provides_library ...".
+        # Such task should not consume worker core slots in our accounting.
+        self.provides_library = False
         self.needs_library = False  # function task that runs in a library's slot
         self.function_slots = None
 

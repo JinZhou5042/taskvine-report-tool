@@ -29,6 +29,13 @@ def remove_duplicates_preserve_order(seq):
     return result
 
 
+def normalize_template_pattern(raw_pattern):
+    """Normalize template input to rightmost name-only pattern."""
+    cleaned = str(raw_pattern).strip().strip("'\"")
+    normalized_path = os.path.normpath(cleaned.rstrip("/"))
+    return os.path.basename(normalized_path)
+
+
 def find_matching_directories(root_dir, patterns):
     try:
         all_dirs = [d for d in os.listdir(root_dir) 
@@ -36,12 +43,8 @@ def find_matching_directories(root_dir, patterns):
         
         matched_dirs = []
         for pattern in patterns:
-            # strip trailing slashes and get basename
-            pattern = pattern.rstrip('/')
-            pattern = os.path.basename(pattern)
-            
-            # remove quotes if user accidentally included them
-            cleaned_pattern = pattern.strip('\'"')
+            # Always match by rightmost name under --logs-dir only.
+            cleaned_pattern = normalize_template_pattern(pattern)
             
             # check for glob pattern matching
             pattern_matches = [d for d in all_dirs if fnmatch.fnmatch(d, cleaned_pattern)]
@@ -94,8 +97,9 @@ def main():
         '--templates', 
         type=str, 
         nargs='+',
-        help='List of log directory names/patterns. Use shell glob expansion without quotes: '
-             '--templates exp* test* checkpoint_*. Quotes will be automatically removed if provided.'
+        help='List of log directory names/patterns (matched under --logs-dir). '
+             'Each item is normalized to its rightmost name. '
+             'Use quotes to avoid shell pre-expansion, e.g. --templates "exp*" "test*" "checkpoint_*".'
     )
 
     parser.add_argument(

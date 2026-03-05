@@ -62,6 +62,13 @@ def remove_duplicates_preserve_order(seq):
     return result
 
 
+def normalize_template_pattern(raw_pattern):
+    """Normalize template input to rightmost name-only pattern."""
+    cleaned = str(raw_pattern).strip().strip("'\"")
+    normalized_path = os.path.normpath(cleaned.rstrip("/"))
+    return os.path.basename(normalized_path)
+
+
 def find_matching_directories(root_dir, patterns):
     """Find directories matching given patterns under root_dir."""
     try:
@@ -71,9 +78,8 @@ def find_matching_directories(root_dir, patterns):
         ]
         matched_dirs = []
         for pattern in patterns:
-            pattern = pattern.rstrip("/")
-            pattern = os.path.basename(pattern)
-            pattern = pattern.strip("'\"")
+            # Always match by rightmost name under --logs-dir only.
+            pattern = normalize_template_pattern(pattern)
             pattern_matches = [d for d in all_dirs if fnmatch.fnmatch(d, pattern)]
             if pattern_matches:
                 matched_dirs.extend(pattern_matches)
@@ -484,7 +490,11 @@ def main():
         "--templates",
         type=str,
         nargs="+",
-        help="List of log directory names/patterns (must have csv-files from vine_parse)",
+        help=(
+            "List of log directory names/patterns (matched under --logs-dir; must have csv-files). "
+            "Each item is normalized to its rightmost name. "
+            "Use quotes to avoid shell pre-expansion, e.g. --templates \"exp*\" \"test*\"."
+        ),
     )
     group.add_argument(
         "-R",
