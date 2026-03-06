@@ -486,9 +486,9 @@ class DataParser:
                 task.worker_id = worker.id
                 core_id = worker.run_task(task)
                 if core_id == -1:
-                    print(f"Warning: worker {task.worker_entry} has no enough cores to run task {task_id}")
-                    print(f"line: {self.debug_current_line}")
-                    print(f"current running tasks: {worker.tasks_running}\n")
+                    # For high-churn workflows this warning is very noisy and does not
+                    # affect downstream CSV generation; keep parser output concise.
+                    pass
                 # check if this is the first try
                 if task_id not in self.current_try_id:
                     self.current_try_id[task_id] = 1
@@ -883,7 +883,20 @@ class DataParser:
             output_file.writelines(lines_to_keep)
 
     def _match_sending_task_to_worker_entry(self, task, when_running, is_library_task):
-        if self.sending_task_to_worker_entry is not None:
+        if task.worker_entry is not None:
+            # Prefer worker extracted from "tx to ... task X" lines.
+            # busy-on lines are not task-keyed and can be interleaved.
+            if (
+                self.sending_task_to_worker_entry is not None
+                and self.sending_task_to_worker_entry != task.worker_entry
+            ):
+                print(
+                    f"Warning: worker mismatch for task {task.task_id}: "
+                    f"tx={task.worker_entry}, busy-on={self.sending_task_to_worker_entry}; using tx mapping"
+                )
+            task.set_when_running(when_running)
+            task.is_library_task = is_library_task
+        elif self.sending_task_to_worker_entry is not None:
             task.set_worker_entry(self.sending_task_to_worker_entry)
             task.set_when_running(when_running)
             task.is_library_task = is_library_task
