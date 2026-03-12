@@ -92,9 +92,12 @@ MAX_TASKS_PER_TYPE = 100000
 # --- HTML export style defaults (self-contained report) ---
 # Initial content width as a percentage of browser viewport width.
 HTML_DEFAULT_CONTENT_WIDTH_PERCENT = 50
-# Minimum and maximum allowed values in the content-width slider.
-HTML_MIN_CONTENT_WIDTH_PERCENT = 35
+# Slider visual range is always 0~100 for better UX consistency.
+HTML_MIN_CONTENT_WIDTH_PERCENT = 0
 HTML_MAX_CONTENT_WIDTH_PERCENT = 100
+# Effective minimum content width applied by JS logic.
+# The slider can render 0~100, but values <10 are clamped to 10.
+HTML_EFFECTIVE_MIN_CONTENT_WIDTH_PERCENT = 20
 # Max viewport percentage cap for the centered content container.
 HTML_MAX_CONTENT_WIDTH_VIEWPORT_PERCENT = 96
 # Main container padding (CSS shorthand: top right bottom left).
@@ -119,6 +122,12 @@ HTML_IMAGE_BORDER_RADIUS_PX = 8
 HTML_IMAGE_BORDER_COLOR = "#edf0f5"
 # Table-of-contents columns.
 HTML_TOC_COLUMNS = 2
+# Overview/summary cards (top section in HTML report).
+HTML_OVERVIEW_GRID_MIN_COL_WIDTH_PX = 220
+HTML_OVERVIEW_CARD_PADDING = "10px 12px"
+HTML_OVERVIEW_LABEL_FONT_SIZE_PX = 12
+HTML_OVERVIEW_VALUE_FONT_SIZE_PX = 19
+HTML_OVERVIEW_LABEL_COLOR = "#667085"
 
 
 def downsample_tasks(tasks, key="execution_time", max_tasks=MAX_TASKS_PER_TYPE):

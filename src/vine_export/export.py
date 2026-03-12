@@ -8,6 +8,8 @@ saves to png-files/, and combines into a single PDF in pdf-files/.
 
 import argparse
 import base64
+import csv
+import json
 import os
 import sys
 import fnmatch
@@ -26,6 +28,7 @@ from src.vine_export.config import (
     HTML_DEFAULT_CONTENT_WIDTH_PERCENT,
     HTML_MIN_CONTENT_WIDTH_PERCENT,
     HTML_MAX_CONTENT_WIDTH_PERCENT,
+    HTML_EFFECTIVE_MIN_CONTENT_WIDTH_PERCENT,
     HTML_MAX_CONTENT_WIDTH_VIEWPORT_PERCENT,
     HTML_WRAP_PADDING,
     HTML_H1_FONT_SIZE_PX,
@@ -43,6 +46,11 @@ from src.vine_export.config import (
     HTML_IMAGE_BORDER_RADIUS_PX,
     HTML_IMAGE_BORDER_COLOR,
     HTML_TOC_COLUMNS,
+    HTML_OVERVIEW_GRID_MIN_COL_WIDTH_PX,
+    HTML_OVERVIEW_CARD_PADDING,
+    HTML_OVERVIEW_LABEL_FONT_SIZE_PX,
+    HTML_OVERVIEW_VALUE_FONT_SIZE_PX,
+    HTML_OVERVIEW_LABEL_COLOR,
 )
 from src import __version__
 
@@ -206,7 +214,247 @@ def _section_title(section_id):
     return section_id.replace("-", " ").title()
 
 
-def build_self_contained_html_report(items, html_path, template_name):
+def _load_export_favicon_data_uri():
+    """Load vine_serve favicon and return a data URI."""
+    favicon_path = Path(__file__).resolve().parents[1] / "vine_serve" / "static" / "favicon.ico"
+    if not favicon_path.exists():
+        return None
+    try:
+        raw = favicon_path.read_bytes()
+    except OSError:
+        return None
+    b64 = base64.b64encode(raw).decode("ascii")
+    return f"data:image/x-icon;base64,{b64}"
+
+
+def _safe_float(value):
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_metadata_dict(csv_files_dir):
+    metadata_path = Path(csv_files_dir) / "metadata.csv"
+    if not metadata_path.exists():
+        return {}
+    data = {}
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            k = row.get("key")
+            v = row.get("value")
+            if not k:
+                continue
+            try:
+                data[k] = json.loads(v) if isinstance(v, str) else v
+            except json.JSONDecodeError:
+                data[k] = v
+    return data
+
+
+def _column_mean(csv_path, column_name):
+    path = Path(csv_path)
+    if not path.exists():
+        return None
+    vals = []
+    with open(path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            num = _safe_float(row.get(column_name))
+            if num is not None:
+                vals.append(num)
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
+def _column_mean_any(csv_path, column_names):
+    path = Path(csv_path)
+    if not path.exists():
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            return None
+        target = next((c for c in column_names if c in reader.fieldnames), None)
+        if target is None:
+            return None
+        vals = []
+        for row in reader:
+            num = _safe_float(row.get(target))
+            if num is not None:
+                vals.append(num)
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
+def _column_max(csv_path, column_name):
+    path = Path(csv_path)
+    if not path.exists():
+        return None
+    max_v = None
+    with open(path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            num = _safe_float(row.get(column_name))
+            if num is None:
+                continue
+            if max_v is None or num > max_v:
+                max_v = num
+    return max_v
+
+
+def _sum_series_max(csv_path):
+    path = Path(csv_path)
+    if not path.exists():
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            return None
+        skip_cols = {"time", "workflow_completion_percentage"}
+        candidates = [c for c in reader.fieldnames if c not in skip_cols]
+        if not candidates:
+            return None
+        max_by_col = {c: 0.0 for c in candidates}
+        for row in reader:
+            for c in candidates:
+                num = _safe_float(row.get(c))
+                if num is not None and num > max_by_col[c]:
+                    max_by_col[c] = num
+    return sum(max_by_col.values())
+
+
+def _max_total_across_rows(csv_path):
+    path = Path(csv_path)
+    if not path.exists():
+        return None
+    max_total = None
+    with open(path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            return None
+        skip_cols = {"time", "workflow_completion_percentage"}
+        candidates = [c for c in reader.fieldnames if c not in skip_cols]
+        for row in reader:
+            total = 0.0
+            has_val = False
+            for c in candidates:
+                num = _safe_float(row.get(c))
+                if num is not None:
+                    total += num
+                    has_val = True
+            if has_val and (max_total is None or total > max_total):
+                max_total = total
+    return max_total
+
+
+def _format_int(v):
+    if v is None:
+        return "--"
+    try:
+        return f"{int(round(float(v))):,}"
+    except (TypeError, ValueError):
+        return "--"
+
+
+def _format_float(v, digits=2):
+    if v is None:
+        return "--"
+    return f"{float(v):,.{digits}f}"
+
+
+def _format_duration(seconds):
+    if seconds is None:
+        return "--"
+    seconds = max(0, float(seconds))
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    mins = int(seconds // 60)
+    secs = seconds % 60
+    if mins < 60:
+        return f"{mins}m {secs:.0f}s"
+    hours = mins // 60
+    mins = mins % 60
+    return f"{hours}h {mins}m"
+
+
+def _format_size_mb(mb):
+    if mb is None:
+        return "--"
+    mb = float(mb)
+    if mb >= 1024:
+        return f"{mb / 1024:.2f} GB"
+    return f"{mb:.2f} MB"
+
+
+def _build_overview_metrics(csv_files_dir):
+    csv_dir = Path(csv_files_dir)
+    meta = _read_metadata_dict(csv_dir)
+
+    total_submitted = meta.get("total_all_tasks", meta.get("total_tasks"))
+    successful = meta.get("successful_tasks")
+    failed = meta.get("failed_tasks", meta.get("unsuccessful_tasks"))
+    recovery = meta.get("recovery_tasks")
+    undispatched = meta.get("undispatched_tasks")
+    total_workers = meta.get("total_workers")
+
+    manager_start = _safe_float(meta.get("manager_start_time"))
+    first_task_time = _column_max(csv_dir / "time_domain.csv", "MIN_TIME")
+    task_window = None
+    min_t = _column_max(csv_dir / "time_domain.csv", "MIN_TIME")
+    max_t = _column_max(csv_dir / "time_domain.csv", "MAX_TIME")
+    if min_t is not None and max_t is not None:
+        task_window = max_t - min_t
+    wait_before_first_task = None
+    if manager_start is not None and first_task_time is not None:
+        wait_before_first_task = max(0.0, first_task_time - manager_start)
+
+    avg_task_exec = _column_mean(csv_dir / "task_execution_time.csv", "Execution Time")
+    avg_worker_lifetime = _column_mean(csv_dir / "worker_lifetime.csv", "LifeTime (s)")
+    total_created_mb = _column_max(csv_dir / "file_created_size.csv", "cumulative_size_mb")
+    total_transferred_mb = _column_max(csv_dir / "file_transferred_size.csv", "cumulative_size_mb")
+    avg_replica = _column_mean(csv_dir / "file_concurrent_replicas.csv", "max_simul_replicas")
+    avg_file_kb = _column_mean_any(
+        csv_dir / "file_sizes.csv",
+        ["file_size_kb", "size_kb", "File Size (KB)", "File Size"],
+    )
+    if avg_file_kb is None:
+        # Fallback: estimate from total created size / total files.
+        total_files = _safe_float(meta.get("total_files"))
+        if total_files and total_files > 0 and total_created_mb is not None:
+            avg_file_kb = (float(total_created_mb) * 1024.0) / total_files
+    incoming_count = _sum_series_max(csv_dir / "worker_incoming_transfers.csv")
+    outgoing_count = _sum_series_max(csv_dir / "worker_outgoing_transfers.csv")
+    peak_total_storage = _max_total_across_rows(csv_dir / "worker_storage_consumption.csv")
+
+    metrics = [
+        ("Tasks Submitted", _format_int(total_submitted), "All submitted tasks (including library tasks)"),
+        ("Tasks Succeeded", _format_int(successful), "Completed successfully"),
+        ("Tasks Failed", _format_int(failed), "Dispatched but unsuccessful"),
+        ("Undispatched Tasks", _format_int(undispatched), "Never dispatched to workers"),
+        ("Recovery Tasks", _format_int(recovery), "Tasks marked as recovery"),
+        ("Workers Connected", _format_int(total_workers), "Unique worker entries observed"),
+        ("Manager -> First Task", _format_duration(wait_before_first_task), "Startup wait before first dispatch"),
+        ("First -> Last Task Window", _format_duration(task_window), "Task activity window"),
+        ("Avg Task Execution", _format_duration(avg_task_exec), "Mean task execution time"),
+        ("Avg Worker Lifetime", _format_duration(avg_worker_lifetime), "Mean worker connection lifetime"),
+        ("Total Created Data", _format_size_mb(total_created_mb), "Max cumulative file-created size"),
+        ("Total Transferred Data", _format_size_mb(total_transferred_mb), "Max cumulative transferred size"),
+        ("Avg Concurrent Replicas", _format_float(avg_replica, 2), "Mean max replicas per file"),
+        ("Avg File Size", f"{_format_float((avg_file_kb or 0) / 1024, 2)} MB" if avg_file_kb is not None else "--", "Mean file size"),
+        ("Incoming Transfers", _format_int(incoming_count), "Summed per-worker incoming transfer totals"),
+        ("Outgoing Transfers", _format_int(outgoing_count), "Summed per-worker outgoing transfer totals"),
+        ("Peak Total Worker Storage", _format_size_mb(peak_total_storage), "Peak sum across all workers"),
+    ]
+    return metrics
+
+
+def build_self_contained_html_report(items, html_path, template_name, csv_files_dir):
     """
     Build a single self-contained HTML report.
 
@@ -215,6 +463,23 @@ def build_self_contained_html_report(items, html_path, template_name):
     ensure_dir(str(Path(html_path).parent), replace=False)
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     repo_url = "https://github.com/cooperative-computing-lab/taskvine-report-tool"
+    favicon_data_uri = _load_export_favicon_data_uri()
+    favicon_link = (
+        f'<link rel="icon" href="{favicon_data_uri}" type="image/x-icon"/>'
+        if favicon_data_uri
+        else ""
+    )
+    overview_metrics = _build_overview_metrics(csv_files_dir)
+    overview_cards = "".join(
+        f"""
+        <div class="metric">
+          <div class="metric-label">{escape(label)}</div>
+          <div class="metric-value">{escape(value)}</div>
+          <div class="metric-note">{escape(note)}</div>
+        </div>
+        """
+        for label, value, note in overview_metrics
+    )
 
     toc_rows = []
     section_blocks = []
@@ -245,6 +510,7 @@ def build_self_contained_html_report(items, html_path, template_name):
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  {favicon_link}
   <title>TaskVine Report - {escape(template_name)}</title>
   <style>
     :root {{
@@ -276,6 +542,10 @@ def build_self_contained_html_report(items, html_path, template_name):
       justify-content: center;
       gap: {HTML_KNOB_ROW_GAP_PX}px;
       flex-wrap: nowrap;
+    }}
+    .layout-knob .row strong {{
+      font-size: {HTML_SECTION_TITLE_FONT_SIZE_PX}px;
+      line-height: 1.2;
     }}
     .layout-knob input[type="range"] {{
       width: min({HTML_SLIDER_MAX_WIDTH_PX}px, 80vw);
@@ -315,6 +585,40 @@ def build_self_contained_html_report(items, html_path, template_name):
       padding: 12px 14px;
       margin-bottom: 16px;
     }}
+    .overview {{
+      margin-bottom: 16px;
+    }}
+    .overview h2 {{
+      margin: 0 0 10px;
+      font-size: {HTML_SECTION_TITLE_FONT_SIZE_PX}px;
+    }}
+    .overview-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax({HTML_OVERVIEW_GRID_MIN_COL_WIDTH_PX}px, 1fr));
+      gap: 10px;
+    }}
+    .metric {{
+      border: 1px solid {HTML_CARD_BORDER_COLOR};
+      border-radius: 8px;
+      padding: {HTML_OVERVIEW_CARD_PADDING};
+      background: #fafcff;
+    }}
+    .metric-label {{
+      font-size: {HTML_OVERVIEW_LABEL_FONT_SIZE_PX}px;
+      color: {HTML_OVERVIEW_LABEL_COLOR};
+      margin-bottom: 2px;
+    }}
+    .metric-value {{
+      font-size: {HTML_OVERVIEW_VALUE_FONT_SIZE_PX}px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 2px;
+      white-space: nowrap;
+    }}
+    .metric-note {{
+      font-size: 11px;
+      color: #98a2b3;
+    }}
     .toc ul {{
       margin: 8px 0 0;
       padding-left: 18px;
@@ -326,6 +630,10 @@ def build_self_contained_html_report(items, html_path, template_name):
     }}
     .toc a:hover {{
       text-decoration: underline;
+    }}
+    .toc strong {{
+      font-size: {HTML_SECTION_TITLE_FONT_SIZE_PX}px;
+      line-height: 1.2;
     }}
     .card {{
       background: {HTML_CARD_BG_COLOR};
@@ -361,6 +669,12 @@ def build_self_contained_html_report(items, html_path, template_name):
     <div class="sub">Template: {escape(template_name)}</div>
     <div class="sub">Generated: {escape(generated_at)}</div>
     <div class="repo">GitHub: <a href="{repo_url}" target="_blank" rel="noopener noreferrer">{repo_url}</a></div>
+    <section class="card overview">
+      <h2>Overview</h2>
+      <div class="overview-grid">
+        {overview_cards}
+      </div>
+    </section>
     <nav class="toc">
       <strong>Sections</strong>
       <ul>
@@ -374,15 +688,19 @@ def build_self_contained_html_report(items, html_path, template_name):
       const slider = document.getElementById('width-slider');
       const valueText = document.getElementById('width-value');
       if (!slider || !valueText) return;
-      let pendingValue = slider.value;
+      const effectiveMin = {HTML_EFFECTIVE_MIN_CONTENT_WIDTH_PERCENT};
+      let pendingValue = Math.max(effectiveMin, Number(slider.value));
+      slider.value = String(pendingValue);
       const apply = (v) => {{
-        document.documentElement.style.setProperty('--content-width-percent', String(v));
-        valueText.textContent = `${{v}}%`;
+        const clamped = Math.max(effectiveMin, Number(v));
+        document.documentElement.style.setProperty('--content-width-percent', String(clamped));
+        valueText.textContent = `${{clamped}}%`;
       }};
       apply(pendingValue);
       // During dragging, only update label; apply layout change on release.
       slider.addEventListener('input', (e) => {{
-        pendingValue = e.target.value;
+        pendingValue = Math.max(effectiveMin, Number(e.target.value));
+        e.target.value = String(pendingValue);
         valueText.textContent = `${{pendingValue}}%`;
       }});
       const commit = () => apply(pendingValue);
@@ -460,7 +778,12 @@ def export_single_template(template_path, args, sections_to_export):
 
     if png_items:
         html_path = html_files_dir / f"{Path(template_path).name}.html"
-        build_self_contained_html_report(png_items, str(html_path), Path(template_path).name)
+        build_self_contained_html_report(
+            png_items,
+            str(html_path),
+            Path(template_path).name,
+            str(csv_files_dir),
+        )
         print(f"  ✅ PNG saved to directory: {png_files_dir}")
         print(f"  ✅ HTML saved to: {html_path}")
     else:

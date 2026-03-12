@@ -486,9 +486,10 @@ class DataParser:
                 task.worker_id = worker.id
                 core_id = worker.run_task(task)
                 if core_id == -1:
-                    # For high-churn workflows this warning is very noisy and does not
-                    # affect downstream CSV generation; keep parser output concise.
-                    pass
+                    print(
+                        f"Warning: worker {task.worker_entry} has no enough cores to run task {task_id}; "
+                        f"current running tasks: {worker.tasks_running}"
+                    )
                 # check if this is the first try
                 if task_id not in self.current_try_id:
                     self.current_try_id[task_id] = 1
