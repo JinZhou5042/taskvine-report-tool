@@ -10,6 +10,7 @@ import math
 import pandas as pd
 import polars as pl
 import traceback
+import re
 from functools import lru_cache
 from datetime import datetime
 import numpy as np
@@ -441,35 +442,67 @@ class DataParser:
         else:
             pass
 
+    def _parse_task_state_transition(self, line):
+        match = re.search(
+            r"state change:\s+([A-Z_]+)\s+\(\d+\)\s+to\s+([A-Z_]+)\s+\(\d+\)",
+            line
+        )
+        if not match:
+            raise ValueError(f"unrecognized state change: {line}")
+        return match.group(1), match.group(2)
+
+    def _create_task_try(self, task_id, timestamp):
+        self.current_try_id[task_id] += 1
+        task = TaskInfo(task_id, self.current_try_id[task_id])
+        task.set_when_ready(timestamp)
+        self.add_task(task)
+        return task
+
+    def _get_current_task(self, task_id):
+        if task_id not in self.current_try_id:
+            return None
+        task_entry = (task_id, self.current_try_id[task_id])
+        return self.tasks.get(task_entry)
+
+    def _ensure_task_for_transition(self, task_id, from_state, to_state, timestamp):
+        task = self._get_current_task(task_id)
+        if task is not None:
+            return task
+
+        if from_state == "READY" and to_state == "RETRIEVED":
+            # Task can be retrieved directly when it cannot run (e.g., missing inputs).
+            return self._create_task_try(task_id, timestamp)
+
+        raise ValueError(
+            f"task {task_id} missing for transition {from_state} -> {to_state}"
+        )
+
     def _handle_debug_line_task_state_change(self):
         parts = self.debug_current_parts
         line = self.debug_current_line
         timestamp = self.debug_current_timestamp
 
         task_id = int(parts[parts.index("Task") + 1])
-        if "INITIAL (0) to READY (1)" in line:                  # a brand new task
-            assert task_id not in self.current_try_id
-            # new task entry
-            self.current_try_id[task_id] += 1
-            task = TaskInfo(task_id, self.current_try_id[task_id])
-            task.set_when_ready(timestamp)
-            self.add_task(task)
+        from_state, to_state = self._parse_task_state_transition(line)
+
+        if (from_state, to_state) == ("INITIAL", "READY"):      # a brand new task
+            if self._get_current_task(task_id) is not None:
+                raise ValueError(f"task {task_id} already exists")
+            self._create_task_try(task_id, timestamp)
             return
-        elif "INITIAL (0) to RUNNING (2)" in line:
+        elif (from_state, to_state) == ("INITIAL", "RUNNING"):
             # this is a library task
-            if task_id not in self.current_try_id:
-                self.current_try_id[task_id] = 1
-                task = TaskInfo(task_id, self.current_try_id[task_id])
-                task.set_when_ready(timestamp)
-                self.add_task(task)
-            task = self.tasks[(task_id, self.current_try_id[task_id])]
+            task = self._get_current_task(task_id)
+            if task is None:
+                task = self._create_task_try(task_id, timestamp)
             self._match_sending_task_to_worker_entry(task, timestamp, True)
             return
 
-        task_entry = (task_id, self.current_try_id[task_id])
-        task = self.tasks[task_entry]
+        task = self._ensure_task_for_transition(
+            task_id, from_state, to_state, timestamp
+        )
 
-        if "READY (1) to RUNNING (2)" in line:                  # as expected
+        if (from_state, to_state) == ("READY", "RUNNING"):      # as expected
             # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
             # in this case, even the state is switched to running, there is no worker info
             if self.manager.when_first_task_start_commit is None:
@@ -493,36 +526,38 @@ class DataParser:
                 # check if this is the first try
                 if task_id not in self.current_try_id:
                     self.current_try_id[task_id] = 1
-        elif "RUNNING (2) to RUNNING (2)" in line:
+        elif (from_state, to_state) == ("RUNNING", "RUNNING"):
             raise ValueError(f"task {task_id} state change: from RUNNING (2) to RUNNING (2)")
-        elif "RETRIEVED (4) to RUNNING (2)" in line:
+        elif (from_state, to_state) == ("RETRIEVED", "RUNNING"):
             print(f"Warning: task {task_id} state change: from RETRIEVED (4) to RUNNING (2)")
             pass
-        elif "RUNNING (2) to DONE (5)" in line:
+        elif (from_state, to_state) == ("RUNNING", "DONE"):
             print(f"Warning: task {task_id} state change: from RUNNING (2) to DONE (5)")
             self._reap_task_if_running(task)
             pass
-        elif "DONE (5) to WAITING_RETRIEVAL (3)" in line:
+        elif (from_state, to_state) == ("DONE", "WAITING_RETRIEVAL"):
             print(f"Warning: task {task_id} state change: from DONE (5) to WAITING_RETRIEVAL (3)")
             pass
-        elif "READY (1) to RETRIEVED (4)" in line:
-            # this can happen such as inputs missing
+        elif (from_state, to_state) == ("READY", "RETRIEVED"):
+            # Task may be directly retrieved when it cannot run, e.g. missing inputs.
             task.set_when_retrieved(timestamp)
             task.set_task_status(timestamp, 1)
-        elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
+        elif (from_state, to_state) == ("RUNNING", "WAITING_RETRIEVAL"):    # as expected
             task.set_when_waiting_retrieval(timestamp)
             # Task execution has ended on worker; release occupied cores now.
             self._reap_task_if_running(task)
-        elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
+        elif (from_state, to_state) == ("WAITING_RETRIEVAL", "RETRIEVED"):  # as expected
             task.set_when_retrieved(timestamp)
-        elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
+        elif (from_state, to_state) == ("RETRIEVED", "DONE"):               # as expected
             task.set_when_done(timestamp)
             if task.worker_entry:
                 worker = self.workers[task.worker_entry]
                 self.manager.set_when_last_task_done(timestamp)
                 worker.tasks_completed.append(task)
-        elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
-                "RUNNING (2) to READY (1)" in line:             # task failure
+        elif (from_state, to_state) in {
+            ("WAITING_RETRIEVAL", "READY"),
+            ("RUNNING", "READY"),
+        }:                                                       # task failure
             self._reap_task_if_running(task)
             if task.worker_entry:
                 worker = self.workers[task.worker_entry]
@@ -556,7 +591,7 @@ class DataParser:
             new_task.set_when_ready(timestamp)
             self.add_task(new_task)
 
-        elif "RUNNING (2) to RETRIEVED (4)" in line:
+        elif (from_state, to_state) == ("RUNNING", "RETRIEVED"):
             task.set_when_retrieved(timestamp)
             if not task.is_library_task:
                 print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
@@ -703,10 +738,9 @@ class DataParser:
 
         # format: Submitted recovery task xxx to re-create lost temporary file xxx.
         file_name = parts[-1].rstrip(".")
-        # this filename must have been appeared before
-        if file_name not in self.files:
-            raise ValueError(f"file {file_name} not found in files")
-        file = self.files[file_name]
+        # File should normally exist from put/cache lines; temp files or partial logs may
+        # only mention the path here (e.g. lost before first debug registration).
+        file = self.ensure_file_info_entry(file_name, 0, self.debug_current_timestamp)
         file.add_producer(task)
         task.add_output_file(file_name)
 
