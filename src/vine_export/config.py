@@ -2,7 +2,7 @@
 General configuration for vine_export plots.
 
 Shared defaults and helpers for all plot modules.
-Aligns with vine_serve processing where applicable.
+Aligns with vine_report processing where applicable.
 """
 
 # --- Plot defaults ---
@@ -85,7 +85,7 @@ COLOR_RETRIEVING = "#cc5a12"
 # Color for completed/done state.
 COLOR_DONE = "#2ca02c"
 
-# Task downsampling (same default as vine_serve DOWNSAMPLE_TASK_BARS=100000)
+# Task downsampling (same default as vine_report DOWNSAMPLE_TASK_BARS=100000)
 # Upper bound of tasks plotted per task type to avoid huge render cost.
 MAX_TASKS_PER_TYPE = 100000
 
@@ -144,7 +144,7 @@ def downsample_tasks(tasks, key="execution_time", max_tasks=MAX_TASKS_PER_TYPE):
     """
     if len(tasks) <= max_tasks:
         return tasks
-    # Same as vine_serve: sort by execution_time descending, take top max_tasks
+    # Same as vine_report: sort by execution_time descending, take top max_tasks
     tasks = sorted(tasks, key=lambda x: x.get(key) if x.get(key) is not None else 0, reverse=True)
     return tasks[:max_tasks]
 

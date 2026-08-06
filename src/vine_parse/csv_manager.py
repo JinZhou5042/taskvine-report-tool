@@ -44,6 +44,12 @@ class CompletionIndex:
     def apply(self, df: pl.DataFrame, time_col: str = 'time',
               out_col: str = 'workflow_completion_percentage') -> pl.DataFrame:
         assert time_col in df.columns, "time column is required"
+        df = df.with_columns(pl.col(time_col).cast(pl.Float64, strict=False))
+        if df.height == 0 or df[time_col].null_count() == df.height:
+            out = df.with_columns(pl.lit(0.0).alias(out_col))
+            cols = out.columns
+            return out.select([time_col, out_col] + [c for c in cols if c not in (time_col, out_col)])
+
         if self.df is None or self.df.height == 0:
             out = df.with_columns(pl.lit(0.0).alias(out_col))
             cols = out.columns
@@ -752,6 +758,8 @@ class CSVManager:
         rows = []
 
         for task in self.dp.tasks.values():
+            if getattr(task, 'is_library_task', False):
+                continue
             if not hasattr(task, 'core_id') or not task.core_id:
                 continue
             if not task.worker_entry:
@@ -781,8 +789,6 @@ class CSVManager:
             }
 
             if task.task_status == 0:  # Successful task
-                if getattr(task, 'is_library_task', False):
-                    continue
                 # Require when_running and time_worker_start/end from "complete" line for accurate bars
                 if (task.when_running is None or task.time_worker_start is None or task.time_worker_end is None):
                     continue
@@ -880,26 +886,27 @@ class CSVManager:
         
         # --- output ---
 
+        columns = [
+            'record_type', 'task_id', 'task_try_id', 'worker_entry', 'worker_id', 'core_id',
+            'cores_requested', 'is_recovery_task', 'input_files', 'output_files', 'num_input_files', 'num_output_files',
+            'task_status', 'category', 'when_ready', 'when_running', 'time_worker_start',
+            'time_worker_end', 'execution_time', 'when_waiting_retrieval', 'when_retrieved',
+            'when_failure_happens', 'when_done', 'unsuccessful_checkbox_name', 'hash',
+            'time_connected', 'time_disconnected', 'cores', 'memory_mb', 'disk_mb', 'gpus'
+        ]
+
         if rows:
             df = pd.DataFrame(rows)
-            
-            # Define column order
-            columns = [
-                'record_type', 'task_id', 'task_try_id', 'worker_entry', 'worker_id', 'core_id',
-                'cores_requested', 'is_recovery_task', 'input_files', 'output_files', 'num_input_files', 'num_output_files',
-                'task_status', 'category', 'when_ready', 'when_running', 'time_worker_start',
-                'time_worker_end', 'execution_time', 'when_waiting_retrieval', 'when_retrieved',
-                'when_failure_happens', 'when_done', 'unsuccessful_checkbox_name', 'hash',
-                'time_connected', 'time_disconnected', 'cores', 'memory_mb', 'disk_mb', 'gpus'
-            ]
-            
+
             # Reorder columns and fill missing ones with None
             for col in columns:
                 if col not in df.columns: 
                     df[col] = None
             df = df[columns]
-            
-            write_df_to_csv(df, self.csv_file_task_execution_details, index=False)
+        else:
+            df = pd.DataFrame(columns=columns)
+
+        write_df_to_csv(df, self.csv_file_task_execution_details, index=False)
 
     def generate_worker_metrics(self):
         base_time = self.MIN_TIME

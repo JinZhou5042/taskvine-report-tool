@@ -17,14 +17,14 @@ import numpy as np
 from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
-import pytz
 import platform
 from src.utils import *
 
 
 # check VINE_PROTOCOL_VERSION in taskvine codebase to see if it matches this version
 # if taskvine protocol version is changed, this file needs to be updated accordingly
-VALID_VINE_PROTOCOL_VERSION = 14
+VALID_VINE_PROTOCOL_VERSION = 13
+TIME_AXIS_ALIGNMENT_TOLERANCE_SECONDS = 1
 
 def count_lines(file_name):
     if platform.system() in ["Linux", "Darwin"]:  # Linux or macOS
@@ -60,8 +60,6 @@ class DataParser:
         ensure_dir(self.pkl_files_dir, replace=False)
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
-        self.transactions = os.path.join(self.vine_logs_dir, 'transactions')   # not necessary
-        self.taskgraph = os.path.join(self.vine_logs_dir, 'taskgraph')         # not necessary
         for file_path in [self.debug]:
             if not os.path.exists(file_path):
                 raise ValueError(f"file {file_path} does not exist")
@@ -100,6 +98,7 @@ class DataParser:
         self.debug_current_line = None
         self.debug_current_parts = None
         self.debug_current_timestamp = None
+        self.time_axis_adjustments = 0
         self._init_debug_handlers()
         self.sending_task_to_worker_entry = None
 
@@ -227,66 +226,56 @@ class DataParser:
     def count_elements_after_current_parts(self, item):
         return count_elements_after(item, self.debug_current_parts)
 
+    def _set_fixed_time_zone(self, offset_seconds):
+        self.datestring_to_timestamp.cache_clear()
+        self.manager.time_zone_offset_hours = offset_seconds / 3600
+        self.manager.equivalent_tz = timezone(timedelta(seconds=offset_seconds))
+
+    def _read_manager_timezone_offset(self, debug_file_path):
+        # New TaskVine debug logs include:
+        # manager timezone at startup: local_time=... tz_abbr=... tz_offset=+0000
+        offset_re = re.compile(r"tz_abbr=([^ ]+)\s+tz_offset=([+-])(\d{2})(\d{2})")
+        with open(debug_file_path, 'r', encoding='utf-8', errors='ignore') as file:
+            for line in file:
+                if "manager timezone at startup:" not in line:
+                    continue
+                match = offset_re.search(line)
+                if not match:
+                    continue
+                _, sign, hours, minutes = match.groups()
+                if int(hours) > 23 or int(minutes) > 59:
+                    raise ValueError(f"Invalid timezone offset in debug file: {sign}{hours}{minutes}")
+                offset_seconds = int(hours) * 3600 + int(minutes) * 60
+                if sign == "-":
+                    offset_seconds = -offset_seconds
+                return offset_seconds
+        return None
+
     def set_time_zone(self, debug_file_path=None):
         if debug_file_path is None:
             debug_file_path = self.debug
-            
-        mgr_start_datestring = None
-        mgr_start_timestamp = None
 
-        # read the first line containing "listening on port" in debug file
-        with open(debug_file_path, 'r') as file:
-            for line in file:
-                if "listening on port" in line:
-                    parts = line.strip().split()
-                    mgr_start_datestring = f"{parts[0]} {parts[1]}"
-                    mgr_start_datestring = datetime.strptime(mgr_start_datestring, "%Y/%m/%d %H:%M:%S.%f").replace(microsecond=0)
-                    break
+        offset_seconds = self._read_manager_timezone_offset(debug_file_path)
+        if offset_seconds is not None:
+            self._set_fixed_time_zone(offset_seconds)
+            print(f"Set debug timestamp offset to {self.manager.equivalent_tz} ({self.manager.time_zone_offset_hours} hours)")
+            return
 
-        # read the first line containing "MANAGER" and "START" in transactions file
-        if os.path.exists(self.transactions):
-            with open(self.transactions, 'r') as file:
-                for line in file:
-                    if line.startswith('#'):
-                        continue
-                    if "MANAGER" in line and "START" in line:
-                        parts = line.strip().split()
-                        mgr_start_timestamp = int(int(parts[0]) / 1e6)
-                        break
-        # otherwise, report the error
-        else:
-            raise ValueError("Could not find manager start timestamp in transactions file.")
-
-        if mgr_start_datestring is None or mgr_start_timestamp is None:
-            raise ValueError("Could not find required timestamps.")
-
-        utc_time = datetime.fromtimestamp(mgr_start_timestamp, tz=timezone.utc)
-
-        for tzname in pytz.all_timezones:
-            tz = pytz.timezone(tzname)
-            try:
-                local_dt = utc_time.astimezone(tz).replace(microsecond=0)
-                target_local = tz.localize(mgr_start_datestring)
-                delta = abs((local_dt - target_local).total_seconds())
-                if delta <= 2:
-                    offset = tz.utcoffset(utc_time.replace(
-                        tzinfo=None)).total_seconds() / 3600
-                    self.manager.time_zone_offset_hours = int(offset)
-                    self.manager.equivalent_tz = timezone(
-                        timedelta(hours=self.manager.time_zone_offset_hours))
-                    break
-            except Exception:
-                continue
-        else:
-            raise ValueError("Could not match to a known time zone.")
-
-        print(f"Set time zone to {self.manager.equivalent_tz} offset {self.manager.time_zone_offset_hours}")
+        raise ValueError("Could not find timezone offset in debug file.")
 
     @lru_cache(maxsize=4096)
     def datestring_to_timestamp(self, datestring):
+        # Debug line prefixes are wall-clock strings. Convert them to Unix time
+        # with the debug log's numeric offset so every internal timestamp uses
+        # the same epoch-based time axis.
         equivalent_datestring = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.manager.equivalent_tz)
         unix_timestamp = float(equivalent_datestring.timestamp())
         return unix_timestamp
+
+    def unix_microseconds_to_timestamp(self, unix_microseconds):
+        # Message payload fields are already Unix time. Timezone must not be
+        # applied here; only convert microseconds to seconds.
+        return floor_decimal(float(unix_microseconds) / 1e6, 2)
 
     def ensure_file_info_entry(self, file_name, size_mb, timestamp):
         if file_name not in self.files:
@@ -323,7 +312,7 @@ class DataParser:
         ip, port = WorkerInfo.extract_ip_port_from_string(self.debug_current_parts[removed_idx - 1])
         worker = self.get_current_worker_by_ip_port(ip, port)
         if worker is None:
-            raise ValueError(f"worker {ip}:{port} is not found")
+            return
 
         worker.add_disconnection(self.debug_current_timestamp)
         self.manager.update_when_last_worker_disconnect(self.debug_current_timestamp)
@@ -353,7 +342,9 @@ class DataParser:
     def _handle_debug_line_failed_to_send_task(self):
         task_id = int(self.debug_current_parts[self.debug_current_parts.index("task") + 1])
         task_entry = (task_id, self.current_try_id[task_id])
-        task = self.tasks[task_entry]
+        task = self.tasks.get(task_entry)
+        if task is None:
+            return
         task.set_task_status(self.debug_current_timestamp, 43 << 3)   # failed to dispatch
 
     def _handle_debug_line_puturl(self):
@@ -396,7 +387,9 @@ class DataParser:
         assert self.count_elements_after_current_parts("kill") == 1
         task_id = int(self.debug_current_parts[self.debug_current_parts.index("kill") + 1])
         task_entry = (task_id, self.current_try_id[task_id])
-        task = self.tasks[task_entry]
+        task = self.tasks.get(task_entry)
+        if task is None:
+            return
         # note that the task may not be committed (Failed to send task is followed)
         if task.worker_entry:
             worker = self.workers[task.worker_entry]
@@ -472,10 +465,24 @@ class DataParser:
         if from_state == "READY" and to_state == "RETRIEVED":
             # Task can be retrieved directly when it cannot run (e.g., missing inputs).
             return self._create_task_try(task_id, timestamp)
+        if from_state == "RUNNING" and to_state == "RETRIEVED":
+            # Partial debug logs may only contain final library cleanup events.
+            task = self._create_task_try(task_id, timestamp)
+            task.is_library_task = True
+            return task
 
         raise ValueError(
             f"task {task_id} missing for transition {from_state} -> {to_state}"
         )
+
+    def _create_missing_failed_attempt_for_ready_retry(self, task_id, from_state, timestamp):
+        task = self._create_task_try(task_id, timestamp)
+        if from_state == "RUNNING":
+            task.set_when_running(timestamp)
+        elif from_state == "WAITING_RETRIEVAL":
+            task.set_when_waiting_retrieval(timestamp)
+        task.set_task_status(timestamp, 4 << 3)
+        return task
 
     def _handle_debug_line_task_state_change(self):
         parts = self.debug_current_parts
@@ -497,6 +504,20 @@ class DataParser:
                 task = self._create_task_try(task_id, timestamp)
             self._match_sending_task_to_worker_entry(task, timestamp, True)
             return
+        elif (
+            to_state == "READY"
+            and from_state in {"RUNNING", "WAITING_RETRIEVAL"}
+            and self._get_current_task(task_id) is None
+        ):
+            # The state transition itself tells us a previous attempt existed
+            # and failed back into READY. If earlier debug lines for that
+            # attempt are absent, create the failed attempt here, then let the
+            # normal failure branch create the next READY attempt.
+            self._create_missing_failed_attempt_for_ready_retry(
+                task_id,
+                from_state,
+                timestamp,
+            )
 
         task = self._ensure_task_for_transition(
             task_id, from_state, to_state, timestamp
@@ -610,8 +631,8 @@ class DataParser:
         exit_status = int(parts[complete_idx + 2])
         output_length = int(parts[complete_idx + 3])
         bytes_sent = int(parts[complete_idx + 4])
-        time_worker_start = floor_decimal(float(parts[complete_idx + 5]) / 1e6, 2)
-        time_worker_end = floor_decimal(float(parts[complete_idx + 6]) / 1e6, 2)
+        time_worker_start = self.unix_microseconds_to_timestamp(parts[complete_idx + 5])
+        time_worker_end = self.unix_microseconds_to_timestamp(parts[complete_idx + 6])
         sandbox_used = None
         try:
             task_id = int(parts[complete_idx + 8])
@@ -620,7 +641,9 @@ class DataParser:
             task_id = int(parts[complete_idx + 7])
 
         task_entry = (task_id, self.current_try_id[task_id])
-        task = self.tasks[task_entry]
+        task = self.tasks.get(task_entry)
+        if task is None:
+            return
 
         task.set_task_status(timestamp, task_status)
 
@@ -673,7 +696,9 @@ class DataParser:
             transfer_id = None
 
         ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_idx - 1])
-        worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
+        worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
+        if worker_entry is None:
+            return
         worker = self.workers[worker_entry]
 
         file = self.files[file_name]
@@ -690,7 +715,8 @@ class DataParser:
         file_name = parts[unlink_id + 1]
         ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
         worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
-        assert worker_entry is not None
+        if worker_entry is None or file_name not in self.files:
+            return
         worker = self.workers[worker_entry]
 
         file = self.files[file_name]
@@ -702,7 +728,9 @@ class DataParser:
         exhausted_idx = parts.index("exhausted resources on")
         task_id = int(parts[exhausted_idx - 1])
         task_try_id = self.current_try_id[task_id]
-        task = self.tasks[(task_id, task_try_id)]
+        task = self.tasks.get((task_id, task_try_id))
+        if task is None:
+            return
         task.exhausted_resources = True
 
     def _handle_debug_line_get_worker_transfer_port(self):
@@ -712,6 +740,8 @@ class DataParser:
         transfer_port = int(parts[transfer_port_idx + 1])
         ip, port = WorkerInfo.extract_ip_port_from_string(parts[transfer_port_idx - 1])
         worker = self.get_current_worker_by_ip_port(ip, port)
+        if worker is None:
+            return
         worker.set_transfer_port(transfer_port)
         self.map_ip_and_transfer_port_to_worker_port[(ip, transfer_port)] = port
 
@@ -724,7 +754,9 @@ class DataParser:
         stdout_idx = parts.index("stdout")
         task_id = int(parts[stdout_idx + 1])
         task_entry = (task_id, self.current_try_id[task_id])
-        task = self.tasks[task_entry]
+        task = self.tasks.get(task_entry)
+        if task is None:
+            return
         stdout_size_mb = int(parts[stdout_idx + 2]) / 2**20
         task.set_stdout_size_mb(stdout_size_mb)
 
@@ -733,7 +765,9 @@ class DataParser:
 
         task_id = int(parts[parts.index("task") + 1])
         task_try_id = self.current_try_id[task_id]
-        task = self.tasks[(task_id, task_try_id)]
+        task = self.tasks.get((task_id, task_try_id))
+        if task is None:
+            return
         task.is_recovery_task = True
 
         # format: Submitted recovery task xxx to re-create lost temporary file xxx.
@@ -949,6 +983,21 @@ class DataParser:
             return
         worker.reap_task(task)
 
+    def _adjust_small_time_axis_skew(self, task, debug_time_name, debug_time, unix_time_name, unix_time):
+        if debug_time is None or unix_time is None or unix_time >= debug_time:
+            return unix_time
+
+        skew = debug_time - unix_time
+        if skew > TIME_AXIS_ALIGNMENT_TOLERANCE_SECONDS:
+            raise ValueError(
+                f"task {task.task_id} has inconsistent time axes: "
+                f"{unix_time_name}={unix_time} is {floor_decimal(skew, 2)}s before "
+                f"{debug_time_name}={debug_time}. Check debug tz_offset or machine clock sync."
+            )
+
+        self.time_axis_adjustments += 1
+        return debug_time
+
     def parse_debug(self):
         # Remove existing debug.cleaned file if exists
         debug_cleaned = os.path.join(self.vine_logs_dir, 'debug.cleaned')
@@ -1008,10 +1057,7 @@ class DataParser:
                 print(f"{name:<20} {hits:>10}")
 
     def parse_logs(self):
-        # parse the debug file
         self.parse_debug()
-        
-        # postprocess the debug
         self.postprocess_debug()
 
         # checkpoint pkl files so that later analysis can be done without re-parsing the debug file
@@ -1067,10 +1113,14 @@ class DataParser:
             if task.when_done is None and task.when_retrieved is not None:
                 task.set_when_done(self.manager.current_max_time)
             if task.time_worker_start and task.when_running and task.time_worker_start < task.when_running:
-                #! there is a big flaw in taskvine: machines may run remotely, their returned timestamps could be in a different timezone
-                #! if this happens, we temporarily modify the time_worker_start to when_running, and time_worker_end to when_waiting_retrieval
-                task.set_time_worker_start(task.when_running)
-                task.set_time_worker_end(task.when_waiting_retrieval)
+                adjusted_start = self._adjust_small_time_axis_skew(
+                    task,
+                    "when_running",
+                    task.when_running,
+                    "time_worker_start",
+                    task.time_worker_start,
+                )
+                task.set_time_worker_start(adjusted_start)
             if task.time_worker_end and task.time_worker_start and task.time_worker_end < task.time_worker_start:
                 raise ValueError(f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
             # note that the task might have not been retrieved yet
@@ -1079,6 +1129,8 @@ class DataParser:
                     task.set_time_worker_end(task.when_retrieved)
                 else:
                     raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
+        if self.time_axis_adjustments:
+            print(f"Warning: adjusted {self.time_axis_adjustments} small task time-axis skews")
         # post-processing for workers
         for worker in self.workers.values():
             # if any of the workers has no time disconnected, we set it to the manager's time_end

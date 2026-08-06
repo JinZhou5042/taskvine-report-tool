@@ -9,6 +9,9 @@ import argparse
 import os
 import sys
 import fnmatch
+import hashlib
+import re
+import shutil
 import traceback as tb
 from pathlib import Path
 
@@ -66,7 +69,6 @@ def find_matching_directories(root_dir, patterns):
 
 
 def find_valid_dirs(root_dir: str):
-    required = {"debug", "performance", "taskgraph", "transactions", "workflow.json"}
     root = Path(root_dir)
     results = []
 
@@ -74,10 +76,75 @@ def find_valid_dirs(root_dir: str):
         if path.is_dir():
             vine_logs = path / "vine-logs"
             if vine_logs.is_dir():
-                entries = {p.name for p in vine_logs.iterdir()}
-                if required.issubset(entries):
+                if (vine_logs / "debug").is_file():
                     results.append(str(path))
     return results
+
+
+def debug_file_run_name(path):
+    path = Path(path).resolve()
+    if path.name != "debug":
+        return sanitize_run_name(path.stem)
+
+    timestamp_pid_re = re.compile(
+        r"^(\d{4})/(\d{2})/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\s+\S+\[(\d+)\]"
+    )
+    manager_timezone_re = re.compile(
+        r"\[(\d+)\].*manager timezone at startup: local_time=(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})"
+    )
+    digest = hashlib.sha1()
+    first_timestamp_name = None
+    with open(path, "rb") as file:
+        for i, raw_line in enumerate(file):
+            if i < 256:
+                digest.update(raw_line)
+            try:
+                line = raw_line.decode("utf-8", errors="ignore")
+            except Exception:
+                continue
+            match = manager_timezone_re.search(line)
+            if match:
+                pid, year, month, day, hour, minute, second = match.groups()
+                return f"taskvine-debug-{year}{month}{day}-{hour}{minute}{second}-{pid}"
+            match = timestamp_pid_re.match(line)
+            if match and first_timestamp_name is None:
+                year, month, day, hour, minute, second, pid = match.groups()
+                first_timestamp_name = f"taskvine-debug-{year}{month}{day}-{hour}{minute}{second}-{pid}"
+            if i >= 255:
+                break
+
+    if first_timestamp_name:
+        return first_timestamp_name
+    return f"taskvine-debug-{digest.hexdigest()[:12]}"
+
+
+def sanitize_run_name(name):
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", name).strip(".-")
+    return cleaned or "taskvine-debug"
+
+
+def prepare_debug_file_template(debug_file, logs_dir):
+    base = Path(logs_dir).resolve()
+    base.mkdir(parents=True, exist_ok=True)
+
+    source = Path(debug_file).expanduser().resolve()
+    if not source.is_file():
+        raise ValueError(f"debug file does not exist: {source}")
+
+    run_dir = base / debug_file_run_name(source)
+    vine_logs_dir = run_dir / "vine-logs"
+    vine_logs_dir.mkdir(parents=True, exist_ok=True)
+    target = vine_logs_dir / "debug"
+
+    if target.exists() or target.is_symlink():
+        target.unlink()
+
+    try:
+        target.symlink_to(source)
+    except OSError:
+        shutil.copy2(source, target)
+
+    return str(run_dir)
 
 
 def main():
@@ -88,7 +155,7 @@ def main():
 
     parser.add_argument(
         '--logs-dir',
-        default=os.getcwd(),
+        default=None,
         help='Base directory containing log folders (default: current directory)'
     )
     
@@ -126,6 +193,12 @@ def main():
         help='Enable recursive mode'
     )
 
+    group.add_argument(
+        '--debug-file',
+        type=str,
+        help='Standalone debug file. vine_parse will create a minimal run folder in the current directory.'
+    )
+
     parser.add_argument(
         '-v', '--version',
         action='version',
@@ -157,9 +230,19 @@ def main():
 
     check_pip_updates()
 
-    root_dir = os.path.abspath(args.logs_dir)
+    if args.debug_file and args.logs_dir:
+        print("❌ Use either --debug-file or --logs-dir, not both. For --debug-file, cd to the output directory first.")
+        sys.exit(1)
 
-    if args.recursive:
+    root_dir = os.path.abspath(args.logs_dir or os.getcwd())
+
+    if args.debug_file:
+        try:
+            full_paths = [prepare_debug_file_template(args.debug_file, root_dir)]
+        except Exception as e:
+            print(f"❌ Error preparing debug file: {e}")
+            sys.exit(1)
+    elif args.recursive:
         full_paths = find_valid_dirs(root_dir)
     else:
         matched_dirs = find_matching_directories(root_dir, args.templates)
@@ -235,4 +318,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main() 
+    main()

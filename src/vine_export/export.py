@@ -119,7 +119,7 @@ def get_export_dirs(runtime_template):
     }
 
 
-# --- Plot section IDs (aligned with vine_serve modules) ---
+# --- Plot section IDs (aligned with vine_report modules) ---
 EXPORT_SECTIONS = [
     "task-execution-details",
     "task-concurrency",
@@ -215,8 +215,8 @@ def _section_title(section_id):
 
 
 def _load_export_favicon_data_uri():
-    """Load vine_serve favicon and return a data URI."""
-    favicon_path = Path(__file__).resolve().parents[1] / "vine_serve" / "static" / "favicon.ico"
+    """Load vine_report favicon and return a data URI."""
+    favicon_path = Path(__file__).resolve().parents[1] / "vine_report" / "static" / "favicon.ico"
     if not favicon_path.exists():
         return None
     try:
