@@ -15,7 +15,9 @@ Producers:
   vine-graph  the fork checkout at --fork-root, used as built (bindings in test_support, worker in taskvine/src)
 
 A workload whose source holds a "# producers: vine-graph" line runs only on that producer and is reported SKIP
-for the others.
+for the others.  A workload with a "# scale: large" line belongs to the large tier (thousands of tasks, minutes per
+run), which runs only with --scale large or --scale all; the default quick tier leaves it out.  Every result records
+the parse's wall time and peak memory and the run's debug log size.
 
 Example:
   python scripts/run_examples.py --producer both --out /tmp/taskvine-report-examples
@@ -38,6 +40,7 @@ from pathlib import Path
 TOOL_ROOT = Path(__file__).resolve().parent.parent
 WORKLOAD_DIR = TOOL_ROOT / "examples" / "workloads"
 PRODUCER_RE = re.compile(r"^# producers:\s*(.+)$", re.MULTILINE)
+SCALE_RE = re.compile(r"^# scale:\s*(\S+)$", re.MULTILINE)
 RECOVERY_RE = re.compile(r"Submitted recovery task (\d+) ")
 CHECKPOINT_START_RE = re.compile(r"vine: checkpoint started: (\S+) from \S+ size=(\d+) .*\binline=(\d)\b")
 CHECKPOINT_END_RE = re.compile(r"vine: checkpoint (complete|failed|cancelled): (\S+) vault_used=")
@@ -70,6 +73,15 @@ def workload_producers(path):
     if not match:
         return {"upstream", "vine-graph"}
     return {item.strip() for item in match.group(1).split(",")}
+
+
+def workload_scale(path):
+    match = SCALE_RE.search(path.read_text())
+    return match.group(1) if match else "quick"
+
+
+def workload_timeout(args, workload):
+    return args.large_timeout if workload_scale(workload) == "large" else args.timeout
 
 
 def kill_pids(pid_file):
@@ -112,7 +124,7 @@ def run_workload(args, producer, workload, port):
         process = subprocess.Popen([args.python, str(workload)], cwd=str(root / f"{template}.scratch"), env=env,
                                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
-            code = process.wait(timeout=args.timeout)
+            code = process.wait(timeout=workload_timeout(args, workload))
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
@@ -131,8 +143,14 @@ def parse_run(args, run):
     env["TASKVINE_CHECK_UPDATES"] = "0"
     command = [args.parser_python, "-m", "src.vine_parse.parse", "--logs-dir", str(run["root"]),
                "--templates", run["run_dir"].name, "--checkpoint-pkl-files"]
+    started = time.time()
     with open(run["root"] / f"{run['run_dir'].name}.parse.log", "w") as log:
-        return subprocess.call(command, cwd=str(TOOL_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT)
+        process = subprocess.Popen(command, cwd=str(TOOL_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT)
+        _, status, usage = os.wait4(process.pid, 0)
+    process.returncode = os.waitstatus_to_exitcode(status)
+    run["parse_seconds"] = round(time.time() - started, 2)
+    run["parse_peak_rss_mb"] = round(usage.ru_maxrss / 1024, 1)   # ru_maxrss is in KiB on Linux
+    return process.returncode
 
 
 def read_transactions(path):
@@ -401,6 +419,28 @@ def check_run(run):
     return checks
 
 
+def run_sizes(run_dir):
+    """Log sizes and the transactions log's task, worker, and file counts, read without the parser."""
+    logs = run_dir / "vine-logs"
+    sizes = {f"{name}_bytes": (logs / name).stat().st_size
+             for name in ("debug", "transactions", "performance", "taskgraph") if (logs / name).exists()}
+    tasks, workers, files = set(), set(), set()
+    if (logs / "transactions").exists():
+        with open(logs / "transactions", errors="replace") as handle:
+            for line in handle:
+                fields = line.split()
+                if len(fields) < 5 or line.startswith("#"):
+                    continue
+                if fields[2] == "TASK":
+                    tasks.add(fields[3])
+                elif fields[2] == "WORKER" and fields[4] == "CONNECTION":
+                    workers.add(fields[3])
+                elif fields[2] == "WORKER" and fields[4] == "CACHE_UPDATE":
+                    files.add(fields[5])
+    sizes.update(tx_tasks=len(tasks), tx_workers=len(workers), tx_cached_files=len(files))
+    return sizes
+
+
 def cleanup_run(run):
     """Keep logs, expectations, and parser outputs; delete worker sandboxes, caches, and staging data."""
     scratch = run["root"] / f"{run['run_dir'].name}.scratch"
@@ -427,6 +467,7 @@ def one(args, producer, workload, port):
     else:
         parse_code = parse_run(args, run)
         checks.append(("parser_exit", parse_code in (0, 2), f"vine_parse exit {parse_code}"))
+        run["sizes"] = run_sizes(run["run_dir"])
         try:
             checks += check_run(run)
         except Exception as exc:
@@ -438,7 +479,9 @@ def one(args, producer, workload, port):
         shutil.rmtree(str((run["run_dir"] / "pkl-files").resolve()), ignore_errors=True)
     result = "PASS" if all(ok for _, ok, _ in checks) else "FAIL"
     return {"producer": producer, "workload": workload.stem, "result": result, "checks": checks,
-            "elapsed": run["elapsed"], "status": run["expected"].get("expect_status", "PASS")}
+            "elapsed": run["elapsed"], "status": run["expected"].get("expect_status", "PASS"),
+            "scale": workload_scale(workload), "parse_seconds": run.get("parse_seconds"),
+            "parse_peak_rss_mb": run.get("parse_peak_rss_mb"), **run.get("sizes", {})}
 
 
 def main(argv=None):
@@ -454,7 +497,10 @@ def main(argv=None):
     parser.add_argument("--parser-python", default=sys.executable, help="interpreter for vine_parse")
     parser.add_argument("--port-base", type=int, default=9700)
     parser.add_argument("--jobs", type=int, default=1, help="workloads run at once (each starts up to 3 workers)")
-    parser.add_argument("--timeout", type=int, default=120, help="seconds before a workload is killed")
+    parser.add_argument("--timeout", type=int, default=120, help="seconds before a quick workload is killed")
+    parser.add_argument("--large-timeout", type=int, default=1800, help="seconds before a large workload is killed")
+    parser.add_argument("--scale", choices=["quick", "large", "all"], default="quick",
+                        help="workload tier: quick (default), large (thousands of tasks), or all")
     parser.add_argument("--keep-data", action="store_true", help="keep worker sandboxes and caches")
     parser.add_argument("--keep-pkl", action="store_true", help="keep the parser's pkl checkpoints")
     args = parser.parse_args(argv)
@@ -465,6 +511,9 @@ def main(argv=None):
 
     producers = ["upstream", "vine-graph"] if args.producer == "both" else [args.producer]
     workloads = sorted(p for p in WORKLOAD_DIR.glob("*.py") if not p.name.startswith("_"))
+    if args.scale != "all" and not args.only:
+        # --only names workloads of any tier.
+        workloads = [p for p in workloads if workload_scale(p) == args.scale]
     if args.only:
         workloads = [p for p in workloads if p.stem in set(args.only)]
     jobs = [(producer, workload) for producer in producers for workload in workloads]
@@ -476,7 +525,9 @@ def main(argv=None):
             result = future.result()
             results.append(result)
             failed = [c for c in result["checks"] if not c[1]]
-            print(f"{result['result']:4} {result['producer']:10} {result['workload']:24} {result['elapsed']:5.1f}s"
+            parse = "" if result.get("parse_seconds") is None else \
+                f" parse {result['parse_seconds']:.1f}s {result['parse_peak_rss_mb']:.0f}MB"
+            print(f"{result['result']:4} {result['producer']:10} {result['workload']:24} {result['elapsed']:5.1f}s{parse}"
                   + ("" if not failed else "  " + "; ".join(f"{n}: {d}" for n, _, d in failed)), flush=True)
     if not args.keep_data:
         # Managers keep generated library code under run_info_path/vine-cache, shared by the workloads of a producer.

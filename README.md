@@ -386,6 +386,24 @@ python /path/to/taskvine-report-tool/scripts/run_examples.py --producer both \
     --jobs 3 --out /tmp/taskvine-report-examples
 ```
 
+The default is the quick tier. `--scale large` runs the large tier (files
+marked `# scale: large`, a few minutes each on four workers of two cores):
+`large_independent` (10,000 independent tasks), `large_dag` (6,001 tasks of
+temp files in 20 layers with fan-in, fan-out, and peer transfers),
+`large_function_calls` (6,000 calls through one library), `large_churn` (4,000
+tasks while a worker is killed and replaced every 8 s, with nonzero exits and
+time limits), and `large_vg` (fork only: 5,001 vine_graph tasks with
+checkpoints and releases). `--scale all` runs both tiers. Each result in
+`summary.json` records the parse's wall time (`parse_seconds`) and peak memory
+(`parse_peak_rss_mb`), the log sizes, and the transactions log's task, worker,
+and cached file counts. The run directories can be opened with `vine_report`.
+
+```bash
+python /path/to/taskvine-report-tool/scripts/run_examples.py --producer both --scale large \
+    --upstream-prefix /path/to/upstream-install --fork-root /path/to/vine-graph \
+    --jobs 2 --out /tmp/taskvine-report-examples-large
+```
+
 Ports 9700 and up are used, workers run in their own sessions and are killed
 at the end. Results are in `<out>/summary.json`. `manager_killed` is an
 expected `PARTIAL` (the Manager is killed). After changing

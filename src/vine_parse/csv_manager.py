@@ -1321,10 +1321,11 @@ class CSVManager:
         if len(rows) == 0:
             return
 
-        df = pl.DataFrame(rows, schema=[
-            'subgraph_id', 'task_id', 'task_execution_time', 'failure_count',
-            'recovery_count', 'input_files', 'output_files',
-        ], orient='row').sort(['subgraph_id', 'task_id'])
+        # Explicit types: a large graph can start with more than polars' inference window of tasks without inputs.
+        df = pl.DataFrame(rows, schema={
+            'subgraph_id': pl.Int64, 'task_id': pl.Int64, 'task_execution_time': pl.Float64,
+            'failure_count': pl.Int64, 'recovery_count': pl.Int64, 'input_files': pl.String, 'output_files': pl.String,
+        }, orient='row').sort(['subgraph_id', 'task_id'])
         write_df_to_csv(df, self.csv_file_task_subgraphs, index=False)
 
     def generate_metadata(self):
